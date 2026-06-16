@@ -349,6 +349,46 @@ class Mod extends shapez.Mod {
             }
             break;
 
+          case "upgrade_action":
+            if (self.network.isHost && self.root) {
+                self.actions.isRemote = true;
+                self.root.hubGoals.tryUnlockUpgrade(payload.upgradeId);
+                self.actions.isRemote = false;
+            }
+            break;
+
+          case "lever_action":
+            if (self.root) {
+                var contents = self.root.map.getLayerContentXY(payload.x, payload.y, "regular");
+                if (contents && contents.components.Lever) {
+                    self.actions.isRemote = true;
+                    contents.components.Lever.toggled = payload.toggled;
+                    self.actions.isRemote = false;
+                    if (self.network.isHost) {
+                        self.network.send("lever_action", payload);
+                    }
+                }
+            }
+            break;
+
+          case "constant_signal_action":
+            if (self.root) {
+                var contents = self.root.map.getLayerContentXY(payload.x, payload.y, "wires");
+                if (contents && contents.components.ConstantSignal) {
+                    self.actions.isRemote = true;
+                    var item = null;
+                    if (payload.signal) {
+                        item = self.root.hud.parts.constantSignalEdit.parseSignalCode(contents, payload.signal);
+                    }
+                    contents.components.ConstantSignal.signal = item;
+                    self.actions.isRemote = false;
+                    if (self.network.isHost) {
+                        self.network.send("constant_signal_action", payload);
+                    }
+                }
+            }
+            break;
+
           case "state_sync":
             if (!self.network.isHost && self.root) {
               if (payload.map_hash !== undefined && payload.map_hash !== self.actions.totalEntitiesPlaced) {
@@ -1006,6 +1046,62 @@ class Mod extends shapez.Mod {
             }
             return origUnpinShape.apply(this, arguments);
         };
+
+        // Hooks for Upgrades
+        if (shapez.HubGoals && !shapez.HubGoals.prototype.tryUnlockUpgrade.__mp_hooked) {
+            var origUnlockUpgrade = shapez.HubGoals.prototype.tryUnlockUpgrade;
+            shapez.HubGoals.prototype.tryUnlockUpgrade = function (upgradeId) {
+                if (!self.actions.isRemote && !self.network.isHost && !self.network.isSpectator) {
+                    self.network.send("upgrade_action", { upgradeId: upgradeId });
+                    return false; // Let the host handle it
+                }
+                return origUnlockUpgrade.apply(this, arguments);
+            };
+            shapez.HubGoals.prototype.tryUnlockUpgrade.__mp_hooked = true;
+        }
+
+        // Hooks for Levers
+        if (shapez.HUDLeverToggle && !shapez.HUDLeverToggle.prototype.downPreHandler.__mp_hooked) {
+            var origLeverToggle = shapez.HUDLeverToggle.prototype.downPreHandler;
+            shapez.HUDLeverToggle.prototype.downPreHandler = function (pos, button) {
+                var res = origLeverToggle.apply(this, arguments);
+                if (res === shapez.STOP_PROPAGATION && !self.actions.isRemote && button === shapez.enumMouseButton.left) {
+                    var tile = this.root.camera.screenToWorld(pos).toTileSpace();
+                    var contents = this.root.map.getLayerContentXY(tile.x, tile.y, "regular");
+                    if (contents && contents.components.Lever) {
+                        var isToggled = contents.components.Lever.toggled;
+                        self.network.send("lever_action", { x: tile.x, y: tile.y, toggled: isToggled });
+                    }
+                }
+                return res;
+            };
+            shapez.HUDLeverToggle.prototype.downPreHandler.__mp_hooked = true;
+        }
+
+        // Hooks for Constant Signals
+        if (shapez.HUDConstantSignalEdit && !shapez.HUDConstantSignalEdit.prototype.editConstantSignal.__mp_hooked) {
+            var origEditConstantSignal = shapez.HUDConstantSignalEdit.prototype.editConstantSignal;
+            shapez.HUDConstantSignalEdit.prototype.editConstantSignal = function (entity, opts) {
+                if (entity.components.ConstantSignal && !entity.components.ConstantSignal.__mp_hooked) {
+                    var _signal = entity.components.ConstantSignal.signal;
+                    Object.defineProperty(entity.components.ConstantSignal, "signal", {
+                        get: function() { return _signal; },
+                        set: function(val) {
+                            var changed = (_signal !== val);
+                            _signal = val;
+                            if (changed && !self.actions.isRemote) {
+                                var tile = entity.components.StaticMapEntity.origin;
+                                var valKey = val ? val.getAsCopyableKey() : null;
+                                self.network.send("constant_signal_action", { x: tile.x, y: tile.y, signal: valKey });
+                            }
+                        }
+                    });
+                    entity.components.ConstantSignal.__mp_hooked = true;
+                }
+                return origEditConstantSignal.apply(this, arguments);
+            };
+            shapez.HUDConstantSignalEdit.prototype.editConstantSignal.__mp_hooked = true;
+        }
 
         // Share hub progress
         if (root.signals.storyGoalCompleted) {
