@@ -336,7 +336,7 @@ class Mod extends shapez.Mod {
                    if (payload.type === "add") {
                        wpPart.addWaypoint(payload.label, {x: payload.x, y: payload.y});
                    } else if (payload.type === "delete" || payload.type === "rename") {
-                       var wp = wpPart.waypoints.find(w => w.label === payload.label && w.center.x === payload.x && w.center.y === payload.y);
+                       var wp = wpPart.waypoints.find(w => w.label === payload.label && Math.abs(w.center.x - payload.x) < 0.1 && Math.abs(w.center.y - payload.y) < 0.1);
                        if (wp) {
                            if (payload.type === "delete") wpPart.deleteWaypoint(wp);
                            else if (payload.type === "rename") wpPart.renameWaypoint(wp, payload.newLabel);
