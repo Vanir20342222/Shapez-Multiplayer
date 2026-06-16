@@ -3,6 +3,9 @@
   <p><b>Real-time cooperative multiplayer for shapez.io!</b></p>
 </div>
 
+> [!WARNING]
+> **Disclaimer:** This mod was completely *vibecoded* by AI! It is currently in **Alpha**, so expect bugs, weird sync issues, and funny behavior. Use at your own risk!
+
 Share a single factory map with friends, place buildings together, and deliver shapes to a shared hub. This project includes a single-file game mod and a lightweight Node.js WebSocket relay server.
 
 ## ✨ Features
