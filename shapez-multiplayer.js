@@ -142,6 +142,9 @@ class Mod extends shapez.Mod {
     this.root = root;
     this.actions.setupHooks(root);
 
+    var loadingOverlay = document.getElementById("mp-loading-overlay");
+    if (loadingOverlay) loadingOverlay.remove();
+
     if (this.syncInterval) {
       clearInterval(this.syncInterval);
     }
@@ -274,6 +277,12 @@ class Mod extends shapez.Mod {
             this.roomCode = payload.code;
             this.playerId = payload.id;
             this.players = new Set(payload.players);
+            
+            var loadingOverlay = document.createElement("div");
+            loadingOverlay.id = "mp-loading-overlay";
+            loadingOverlay.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:#1a1c20;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999999;color:#b39ddb;font-family:inherit;";
+            loadingOverlay.innerHTML = "<div style='width:60px;height:60px;border:6px solid #333;border-top-color:#b39ddb;border-radius:50%;animation:mp-spin 1s linear infinite;margin-bottom:25px;'></div><h2 style='margin:0;letter-spacing:0.1em;text-transform:uppercase;'>Joining Room...</h2><p style='color:#aaa;margin-top:10px;'>Downloading game state</p><style>@keyframes mp-spin { to { transform: rotate(360deg); } }</style>";
+            document.body.appendChild(loadingOverlay);
             break;
 
           case "player_joined":
@@ -285,6 +294,13 @@ class Mod extends shapez.Mod {
             break;
 
           case "snapshot":
+            var overlay = document.getElementById("mp-loading-overlay");
+            if (overlay) {
+                var h2 = overlay.querySelector("h2");
+                var p = overlay.querySelector("p");
+                if (h2) h2.textContent = "Loading Map...";
+                if (p) p.textContent = "Processing save data";
+            }
             var metaData = {
                 lastUpdate: Date.now(),
                 version: shapez.Savegame.getCurrentVersion(),
