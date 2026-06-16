@@ -998,7 +998,8 @@ class Mod extends shapez.Mod {
           if (res) {
             if (!self.actions.isRemote && !self.network.isSpectator) {
               var origin = entity.components.StaticMapEntity.origin;
-              self.network.actionQueue.push({ type: "delete", payload: { x: origin.x, y: origin.y } });
+              var layer = entity.components.StaticMapEntity.getLayer() || "regular";
+              self.network.actionQueue.push({ type: "delete", payload: { x: origin.x, y: origin.y, layer: layer } });
             }
             self.actions.totalEntitiesPlaced--;
           }
@@ -1158,7 +1159,8 @@ class Mod extends shapez.Mod {
               if(res) this.totalEntitiesPlaced++;
             }
           } else if (action.type === "delete") {
-            var entity = root.map.getLayerContentXY(action.payload.x, action.payload.y, "regular");
+            var layer = action.payload.layer || "regular";
+            var entity = root.map.getLayerContentXY(action.payload.x, action.payload.y, layer);
             if (entity) {
                 var res = root.logic.tryDeleteBuilding(entity);
                 if(res) this.totalEntitiesPlaced--;
