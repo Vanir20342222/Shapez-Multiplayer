@@ -194,6 +194,8 @@ class Mod extends shapez.Mod {
     var loadingOverlay = document.getElementById("mp-loading-overlay");
     if (loadingOverlay) loadingOverlay.remove();
 
+    this.ui.setupChatOverlay();
+
     if (this.syncInterval) {
       clearInterval(this.syncInterval);
     }
@@ -247,7 +249,8 @@ class Mod extends shapez.Mod {
       pendingHostSavegameId: null,
       serverUrl: null,
       actionQueue: [],
-      actionInterval: null,
+      packetSequence: 0,
+      lastReceivedSequence: -1,
 
       connect: function(serverUrl) {
         var net = this;
@@ -257,10 +260,14 @@ class Mod extends shapez.Mod {
           net.ws.onopen = function() {
               if (net.actionInterval) clearInterval(net.actionInterval);
               net.actionInterval = setInterval(function() {
-                  if (net.actionQueue.length > 0) {
-                      net.send("action_batch", { actions: net.actionQueue });
-                      net.actionQueue = [];
-                  }
+                if (self.network.actionQueue.length > 0) {
+                  self.network.packetSequence++;
+                  self.network.send("action_batch", { 
+                      seq: self.network.packetSequence, 
+                      actions: self.network.actionQueue 
+                  });
+                  self.network.actionQueue = [];
+                }
               }, 50);
               resolve();
           };
@@ -481,6 +488,13 @@ class Mod extends shapez.Mod {
             break;
 
           case "action_batch":
+            if (!self.network.isHost && payload.seq !== undefined) {
+                if (self.network.lastReceivedSequence !== -1 && payload.seq !== self.network.lastReceivedSequence + 1) {
+                    console.warn("Packet loss detected! Expected " + (self.network.lastReceivedSequence + 1) + " but got " + payload.seq);
+                    self.network.send("request_snapshot", {});
+                }
+                self.network.lastReceivedSequence = payload.seq;
+            }
             if (payload.actions) {
                 for (var i = 0; i < payload.actions.length; i++) {
                     self.actions.handleRemote(payload.actions[i], from);
@@ -936,23 +950,79 @@ class Mod extends shapez.Mod {
       },
 
       appendChatMessage: function(sender, text) {
-        var log = document.getElementById("mp-chat-log");
+        var log = document.getElementById("mp-hud-chat-log");
         if (log) {
             var msgEl = document.createElement("div");
+            msgEl.style.cssText = "background:rgba(0,0,0,0.6); color:white; padding:4px 8px; border-radius:4px; font-size:13px; margin-bottom:4px; word-wrap:break-word; text-shadow:1px 1px 0 #000; animation: mpFadeOut 10s forwards;";
             msgEl.innerHTML = "<b>" + sender + ":</b> " + text;
             log.appendChild(msgEl);
             log.scrollTop = log.scrollHeight;
-        } else {
-            // Show toast if panel is closed
-            var toast = document.createElement("div");
-            toast.style.cssText = "position:fixed; bottom:20px; right:20px; background:rgba(40,40,40,0.9); color:white; padding:10px 15px; border-left:4px solid #4a148c; border-radius:4px; font-size:13px; z-index:9999; box-shadow:0 4px 12px rgba(0,0,0,0.5); pointer-events:none; transition:opacity 0.5s;";
-            toast.innerHTML = "<b>" + sender + ":</b> " + text;
-            document.body.appendChild(toast);
-            setTimeout(function() {
-                toast.style.opacity = "0";
-                setTimeout(function() { toast.remove(); }, 500);
-            }, 5000);
         }
+      },
+
+      setupChatOverlay: function() {
+        var existing = document.getElementById("mp-hud-chat");
+        if (existing) existing.remove();
+        
+        var style = document.createElement("style");
+        style.textContent = "@keyframes mpFadeOut { 0% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }";
+        document.head.appendChild(style);
+
+        var container = document.createElement("div");
+        container.id = "mp-hud-chat";
+        container.style.cssText = "position:fixed; bottom:20px; left:20px; width:350px; display:flex; flex-direction:column; z-index:9999; pointer-events:none;";
+        
+        var log = document.createElement("div");
+        log.id = "mp-hud-chat-log";
+        log.style.cssText = "max-height:200px; overflow-y:hidden; display:flex; flex-direction:column; justify-content:flex-end;";
+        container.appendChild(log);
+        
+        var inputWrap = document.createElement("div");
+        inputWrap.id = "mp-hud-chat-input-wrap";
+        inputWrap.style.cssText = "margin-top:8px; display:none; pointer-events:all; background:rgba(0,0,0,0.8); padding:6px; border-radius:4px;";
+        
+        var input = document.createElement("input");
+        input.id = "mp-hud-chat-input";
+        input.type = "text";
+        input.placeholder = "Press Enter to chat...";
+        input.style.cssText = "width:100%; box-sizing:border-box; background:transparent; border:none; color:white; font-size:14px; outline:none;";
+        inputWrap.appendChild(input);
+        container.appendChild(inputWrap);
+        
+        document.body.appendChild(container);
+
+        var isTyping = false;
+        
+        document.addEventListener("keydown", function(e) {
+            if (e.key === "Enter" && self.root) {
+                if (isTyping) {
+                    var text = input.value.trim();
+                    if (text) {
+                        self.network.send("chat_message", { text: text });
+                    }
+                    input.value = "";
+                    input.blur();
+                    inputWrap.style.display = "none";
+                    isTyping = false;
+                } else {
+                    inputWrap.style.display = "block";
+                    input.focus();
+                    isTyping = true;
+                    e.preventDefault();
+                }
+            } else if (e.key === "Escape" && isTyping) {
+                input.value = "";
+                input.blur();
+                inputWrap.style.display = "none";
+                isTyping = false;
+            }
+            if (isTyping) {
+                e.stopPropagation();
+            }
+        }, true);
+
+        input.addEventListener("keyup", function(e) { if (isTyping) e.stopPropagation(); }, true);
+        input.addEventListener("keypress", function(e) { if (isTyping) e.stopPropagation(); }, true);
       }
     };
   }
@@ -1002,34 +1072,33 @@ class Mod extends shapez.Mod {
         if (!shapez.Blueprint.prototype.tryPlace.__mp_hooked) {
             var origBlueprintPlace = shapez.Blueprint.prototype.tryPlace;
             shapez.Blueprint.prototype.tryPlace = function (blueprintRoot, tile) {
-                var entitiesToPlace = [];
+                var compressedEntities = [];
                 if (!self.actions.isRemote && !self.network.isSpectator) {
                      for (var i = 0; i < this.entities.length; ++i) {
                          var entity = this.entities[i];
                          if (blueprintRoot.logic.checkCanPlaceEntity(entity, { offset: tile })) {
                              var staticComp = entity.components.StaticMapEntity;
                              var metaBuilding = staticComp.getMetaBuilding();
-                             entitiesToPlace.push({
-                                 code: metaBuilding.getId(),
-                                 origin: { x: staticComp.origin.x + tile.x, y: staticComp.origin.y + tile.y },
-                                 rotation: staticComp.rotation,
-                                 rotationVariant: staticComp.getRotationVariant(),
-                                 variant: staticComp.getVariant()
-                             });
+                             compressedEntities.push([
+                                 metaBuilding.getId(),
+                                 staticComp.origin.x + tile.x,
+                                 staticComp.origin.y + tile.y,
+                                 staticComp.rotation,
+                                 staticComp.getRotationVariant(),
+                                 staticComp.getVariant()
+                             ]);
                          }
                      }
                 }
 
                 var res = origBlueprintPlace.apply(this, arguments);
 
-                if (res && entitiesToPlace.length > 0) {
-                     for (var i = 0; i < entitiesToPlace.length; ++i) {
-                          self.network.actionQueue.push({
-                              type: "place",
-                              payload: entitiesToPlace[i]
-                          });
-                          self.actions.totalEntitiesPlaced++;
-                     }
+                if (res && compressedEntities.length > 0) {
+                     self.network.actionQueue.push({
+                         type: "place_blueprint",
+                         payload: { entities: compressedEntities }
+                     });
+                     self.actions.totalEntitiesPlaced += compressedEntities.length;
                 }
                 return res;
             };
@@ -1223,6 +1292,31 @@ class Mod extends shapez.Mod {
               });
               if(res) this.totalEntitiesPlaced++;
             }
+          } else if (action.type === "place_blueprint") {
+             if (action.payload.entities) {
+                 var rootLogic = root.logic;
+                 rootLogic.performBulkOperation(function() {
+                     rootLogic.performImmutableOperation(function() {
+                         var ents = action.payload.entities;
+                         for (var i = 0; i < ents.length; i++) {
+                             var data = ents[i];
+                             var metaBuilding = shapez.gMetaBuildingRegistry.findById(data[0]);
+                             if (metaBuilding) {
+                                 var res = rootLogic.tryPlaceBuilding({
+                                     building: metaBuilding,
+                                     origin: new shapez.Vector(data[1], data[2]),
+                                     rotation: data[3] || 0,
+                                     originalRotation: data[3] || 0,
+                                     rotationVariant: data[4] || 0,
+                                     variant: data[5] || "default"
+                                 });
+                                 if (res) self.actions.totalEntitiesPlaced++;
+                             }
+                         }
+                         return true;
+                     });
+                 });
+             }
           } else if (action.type === "delete") {
             var layer = action.payload.layer || "regular";
             var entity = root.map.getLayerContentXY(action.payload.x, action.payload.y, layer);
