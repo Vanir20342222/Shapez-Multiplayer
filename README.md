@@ -29,6 +29,9 @@ To play multiplayer, you must install the mod file into your shapez.io game.
 4. Drag and drop the `shapez-multiplayer.js` file into the folder.
 5. Restart shapez.io. You should now see "Multiplayer" options in the main menu!
 
+> [!CAUTION]
+> **Important Note on Other Mods:** All players joining a lobby **MUST** have the exact same mods installed in their mods folder as the host. If the host has other mods (like `usage_statistics.js`) and you do not, your game will crash when trying to sync the factory!
+
 ---
 
 ## 🖥️ 2. Setting up the Server
