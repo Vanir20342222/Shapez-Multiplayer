@@ -1261,38 +1261,83 @@ class CursorOverlay extends shapez.BaseHUDPart {
       var pos = this.root.app.mouseHandler.getMouseWorldPos();
       if (pos) this.mod.network.send("cursor", { x: pos.x, y: pos.y });
     }
+    
+    var now = Date.now();
+    this.cursors.forEach(function(data, id) {
+       if (data.targetX !== undefined) {
+           var dt = Math.min(1, (now - data.lastUpdate) / 100);
+           data.x = data.startX + (data.targetX - data.startX) * dt;
+           data.y = data.startY + (data.targetY - data.startY) * dt;
+       }
+    });
   }
   updateRemote(id, pos) {
     if (!this.cursors) this.cursors = new Map();
-    this.cursors.set(id, { x: pos.x, y: pos.y, time: Date.now() });
+    var existing = this.cursors.get(id);
+    if (existing) {
+        existing.startX = existing.x;
+        existing.startY = existing.y;
+        existing.targetX = pos.x;
+        existing.targetY = pos.y;
+        existing.lastUpdate = Date.now();
+        existing.time = Date.now();
+    } else {
+        this.cursors.set(id, { x: pos.x, y: pos.y, startX: pos.x, startY: pos.y, targetX: pos.x, targetY: pos.y, lastUpdate: Date.now(), time: Date.now() });
+    }
   }
   drawOverlays(parameters) {
     if (!this.cursors) return;
     var context = parameters.context;
-    var zoomLevel = parameters.zoomLevel;
     var now = Date.now();
     var toDelete = [];
     this.cursors.forEach(function(data, id) {
       if (now - data.time > 5000) { toDelete.push(id); return; }
       var screenPos = this.root.camera.worldToScreen(new shapez.Vector(data.x, data.y));
       
-      var color = "#ff00ff";
+      var color = "#b39ddb";
+      var name = id;
       if (this.mod.playerList) {
           for (var i = 0; i < this.mod.playerList.length; i++) {
               if (this.mod.playerList[i].id === id) {
                   color = this.mod.playerList[i].color || color;
+                  name = this.mod.playerList[i].name || id;
                   break;
               }
           }
       }
 
+      // Draw pointer
       context.fillStyle = color;
       context.beginPath();
-      context.arc(screenPos.x, screenPos.y, 5 / zoomLevel, 0, Math.PI * 2);
+      context.moveTo(screenPos.x, screenPos.y);
+      context.lineTo(screenPos.x + 12, screenPos.y + 12);
+      context.lineTo(screenPos.x + 4, screenPos.y + 12);
+      context.lineTo(screenPos.x, screenPos.y + 18);
+      context.closePath();
       context.fill();
-      context.font = (12 / zoomLevel) + "px sans-serif";
-      context.fillText(id, screenPos.x + 8 / zoomLevel, screenPos.y);
+      context.lineWidth = 1;
+      context.strokeStyle = "#fff";
+      context.stroke();
+
+      // Draw name badge
+      context.font = "bold 12px sans-serif";
+      var textWidth = context.measureText(name).width;
+      var badgeX = screenPos.x + 12;
+      var badgeY = screenPos.y + 12;
+      
+      context.fillStyle = "rgba(0, 0, 0, 0.7)";
+      context.beginPath();
+      if (context.roundRect) {
+          context.roundRect(badgeX, badgeY, textWidth + 10, 20, 4);
+      } else {
+          context.fillRect(badgeX, badgeY, textWidth + 10, 20);
+      }
+      context.fill();
+
+      context.fillStyle = color;
+      context.fillText(name, badgeX + 5, badgeY + 14);
     }.bind(this));
+    
     for (var i = 0; i < toDelete.length; i++) {
       this.cursors.delete(toDelete[i]);
     }
