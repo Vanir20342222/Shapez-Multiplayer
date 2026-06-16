@@ -1,2 +1,4 @@
 # Shapez-Multiplayer
 Real-time multiplayer mod for shapez.io — share a single factory map with friends, place buildings together, and deliver shapes to a shared hub. Single-file mod + minimal WebSocket relay server.
+
+shapez-multiplayer adds real-time cooperative multiplayer to shapez.io. Host a room, share the code, and build a factory together — building placement, deletions, and hub deliveries sync across all connected players, with live colored cursors showing where everyone is working. Ships as a single-file mod (shapez-multiplayer.js) plus a lightweight Node.js WebSocket relay server (server.js) with no game-state logic on the server side — the host stays authoritative.
