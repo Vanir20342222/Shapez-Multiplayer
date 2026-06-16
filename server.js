@@ -255,18 +255,6 @@ function handleMessage(ws, message) {
       break;
     }
 
-    case "server_update": {
-      const exec = require('child_process').exec;
-      exec("git pull", { cwd: __dirname }, (error, stdout, stderr) => {
-        if (error) {
-           ws.send(JSON.stringify({ type: "error", payload: { message: "Update failed: " + error.message } }));
-        } else {
-           ws.send(JSON.stringify({ type: "server_updated", payload: { message: stdout } }));
-        }
-      });
-      break;
-    }
-
     default: {
       const info = socketInfo.get(ws);
       if (!info) return;
