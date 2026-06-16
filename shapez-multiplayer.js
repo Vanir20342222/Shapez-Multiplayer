@@ -74,11 +74,20 @@ class Mod extends shapez.Mod {
           btn.className = "styledButton mp-btn";
           btn.style.cssText = "display:block; width:100%; max-width:100%; box-sizing:border-box; padding:15px 10px; margin-top:10px; background:#4a148c; color:white; font-weight:bold; font-size:18px; letter-spacing:0.1em; text-transform:uppercase; border:none; border-radius:4px; cursor:pointer; pointer-events:all;";
           btn.onclick = () => self.ui.showLobby();
+          
+          const updateBtn = document.createElement("button");
+          updateBtn.innerText = "Check for Mod Updates";
+          updateBtn.className = "styledButton mp-update-btn";
+          updateBtn.style.cssText = "display:block; width:100%; max-width:100%; box-sizing:border-box; padding:10px 10px; margin-top:8px; background:#1e88e5; color:white; font-weight:bold; font-size:12px; letter-spacing:0.1em; text-transform:uppercase; border:none; border-radius:4px; cursor:pointer; pointer-events:all;";
+          updateBtn.onclick = () => self.checkForUpdates(updateBtn);
+          
           const buttons = mainContainer.querySelector(".buttons");
           if (buttons) {
             buttons.parentNode.insertBefore(btn, buttons.nextSibling);
+            buttons.parentNode.insertBefore(updateBtn, btn.nextSibling);
           } else {
             mainContainer.appendChild(btn);
+            mainContainer.appendChild(updateBtn);
           }
         }
       },
@@ -86,6 +95,8 @@ class Mod extends shapez.Mod {
         $old.onLeave.apply(this, arguments);
         const btn = document.querySelector(".mp-btn");
         if (btn) btn.remove();
+        const updateBtn = document.querySelector(".mp-update-btn");
+        if (updateBtn) updateBtn.remove();
       },
       renderSavegames() {
         $old.renderSavegames.apply(this, arguments);
@@ -136,6 +147,50 @@ class Mod extends shapez.Mod {
     this.signals.gameStarted.add((root) => {
       self.onGameStarted(root);
     });
+  }
+
+  checkForUpdates(btnEl) {
+      if (btnEl.textContent === "Checking...") return;
+      var origText = btnEl.textContent;
+      btnEl.textContent = "Checking...";
+      var repoUrl = "https://raw.githubusercontent.com/Vanir20342222/Shapez-Multiplayer/main/shapez-multiplayer.js";
+      fetch(repoUrl, { cache: "no-store" })
+          .then(function(res) {
+              if (!res.ok) throw new Error("Network response was not ok");
+              return res.text();
+          })
+          .then(function(code) {
+              var match = code.match(/version:\s*"([^"]+)"/);
+              if (match && match[1]) {
+                  var onlineVersion = match[1];
+                  var currentVersion = METADATA.version;
+                  if (onlineVersion !== currentVersion) {
+                      if (confirm("New version " + onlineVersion + " is available! You have " + currentVersion + ". Download now?")) {
+                          var blob = new Blob([code], { type: "text/javascript" });
+                          var url = URL.createObjectURL(blob);
+                          var a = document.createElement("a");
+                          a.href = url;
+                          a.download = "shapez-multiplayer.js";
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                          URL.revokeObjectURL(url);
+                          alert("File downloaded! Please replace your local mod file and restart the game.");
+                      }
+                  } else {
+                      alert("You are on the latest version (" + currentVersion + ")!");
+                  }
+              } else {
+                  throw new Error("Could not parse version from online file.");
+              }
+          })
+          .catch(function(err) {
+              console.error("Update check failed:", err);
+              alert("Failed to check for updates: " + err.message);
+          })
+          .finally(function() {
+              btnEl.textContent = origText;
+          });
   }
 
   onGameStarted(root) {
