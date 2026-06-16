@@ -150,17 +150,21 @@ class Mod extends shapez.Mod {
       this.ui.showRoomStatus(this.network.roomCode, true);
       this.syncInterval = setInterval(function() {
         if (!self.root || !self.root.entityMgr) return;
-        var newHub = self.root.hubGoals.serialize();
-        var mapHash = self.actions.totalEntitiesPlaced || 0;
-        if (self._lastHubObj) {
-            var delta = calculateDelta(self._lastHubObj, newHub);
+        var fullState = {
+            hub: self.root.hubGoals.serialize(),
+            map_hash: self.actions.totalEntitiesPlaced || 0,
+            waypoints: self.root.hud.parts.waypoints.serialize(),
+            pinnedShapes: self.root.hud.parts.pinnedShapes.serialize()
+        };
+        if (self._lastSyncObj) {
+            var delta = calculateDelta(self._lastSyncObj, fullState);
             if (delta !== undefined) {
-                self.network.send("state_sync_delta", { delta: delta, map_hash: mapHash });
+                self.network.send("state_sync_delta", { delta: delta });
             }
         } else {
-            self.network.send("state_sync", { hub: newHub, map_hash: mapHash });
+            self.network.send("state_sync", fullState);
         }
-        self._lastHubObj = JSON.parse(JSON.stringify(newHub));
+        self._lastSyncObj = JSON.parse(JSON.stringify(fullState));
       }, 500);
     } else if (this.network.roomCode) {
       this.ui.showRoomStatus(this.network.roomCode, false);
@@ -308,42 +312,62 @@ class Mod extends shapez.Mod {
             }
             break;
 
+          case "waypoint_action":
+            if (self.network.isHost && self.root) {
+                self.actions.isRemote = true;
+                try {
+                   var wpPart = self.root.hud.parts.waypoints;
+                   if (payload.type === "add") {
+                       wpPart.addWaypoint(payload.label, {x: payload.x, y: payload.y});
+                   } else if (payload.type === "delete" || payload.type === "rename") {
+                       var wp = wpPart.waypoints.find(w => w.label === payload.label && w.center.x === payload.x && w.center.y === payload.y);
+                       if (wp) {
+                           if (payload.type === "delete") wpPart.deleteWaypoint(wp);
+                           else if (payload.type === "rename") wpPart.renameWaypoint(wp, payload.newLabel);
+                       }
+                   }
+                } finally {
+                   self.actions.isRemote = false;
+                }
+            }
+            break;
+
+          case "pinned_action":
+            if (self.network.isHost && self.root) {
+                self.actions.isRemote = true;
+                try {
+                   var psPart = self.root.hud.parts.pinnedShapes;
+                   if (payload.type === "pin") {
+                       var def = self.root.shapeDefinitionMgr.getShapeFromShortKey(payload.key);
+                       if (def) psPart.pinNewShape(def);
+                   } else if (payload.type === "unpin") {
+                       psPart.unpinShape(payload.key);
+                   }
+                } finally {
+                   self.actions.isRemote = false;
+                }
+            }
+            break;
+
           case "state_sync":
             if (!self.network.isHost && self.root) {
               if (payload.map_hash !== undefined && payload.map_hash !== self.actions.totalEntitiesPlaced) {
                   self.network.send("request_snapshot", {});
                   self.actions.totalEntitiesPlaced = payload.map_hash;
               }
-              var hub = payload.hub;
-              if (hub && self.root.hubGoals) {
-                self._lastHubObj = JSON.parse(JSON.stringify(hub));
-                var oldUpgrades = JSON.stringify(self.root.hubGoals.upgradeLevels || {});
-                self.root.hubGoals.deserialize(hub, self.root);
-                var newUpgrades = JSON.stringify(self.root.hubGoals.upgradeLevels || {});
-                if (oldUpgrades !== newUpgrades) {
-                  for (var id in self.root.hubGoals.upgradeLevels) {
-                     self.root.signals.upgradePurchased.dispatch(id);
-                  }
-                }
-              }
+              self._lastSyncObj = JSON.parse(JSON.stringify(payload));
+              self.sync.applyState(self.root, payload);
             }
             break;
 
           case "state_sync_delta":
-            if (!self.network.isHost && self.root && self.root.hubGoals && self._lastHubObj) {
-                if (payload.map_hash !== undefined && payload.map_hash !== self.actions.totalEntitiesPlaced) {
+            if (!self.network.isHost && self.root && self._lastSyncObj) {
+                applyDelta(self._lastSyncObj, payload.delta);
+                if (self._lastSyncObj.map_hash !== undefined && self._lastSyncObj.map_hash !== self.actions.totalEntitiesPlaced) {
                     self.network.send("request_snapshot", {});
-                    self.actions.totalEntitiesPlaced = payload.map_hash;
+                    self.actions.totalEntitiesPlaced = self._lastSyncObj.map_hash;
                 }
-                var oldUpgrades = JSON.stringify(self.root.hubGoals.upgradeLevels || {});
-                applyDelta(self._lastHubObj, payload.delta);
-                self.root.hubGoals.deserialize(self._lastHubObj, self.root);
-                var newUpgrades = JSON.stringify(self.root.hubGoals.upgradeLevels || {});
-                if (oldUpgrades !== newUpgrades) {
-                  for (var id in self.root.hubGoals.upgradeLevels) {
-                     self.root.signals.upgradePurchased.dispatch(id);
-                  }
-                }
+                self.sync.applyState(self.root, self._lastSyncObj);
             }
             break;
 
@@ -833,6 +857,33 @@ class Mod extends shapez.Mod {
       createSnapshot: function(root) {
         root.savegame.updateData(root);
         return root.savegame.getCurrentDump();
+      },
+      applyState: function(root, state) {
+          if (state.hub && root.hubGoals) {
+              var oldUpgrades = JSON.stringify(root.hubGoals.upgradeLevels || {});
+              root.hubGoals.deserialize(state.hub, root);
+              var newUpgrades = JSON.stringify(root.hubGoals.upgradeLevels || {});
+              if (oldUpgrades !== newUpgrades) {
+                  for (var id in root.hubGoals.upgradeLevels) {
+                     root.signals.upgradePurchased.dispatch(id);
+                  }
+              }
+          }
+          if (state.waypoints && root.hud.parts.waypoints) {
+              var oldWp = JSON.stringify(root.hud.parts.waypoints.serialize());
+              var newWp = JSON.stringify(state.waypoints);
+              if (oldWp !== newWp) {
+                  root.hud.parts.waypoints.deserialize(state.waypoints);
+              }
+          }
+          if (state.pinnedShapes && root.hud.parts.pinnedShapes) {
+              var oldPs = JSON.stringify(root.hud.parts.pinnedShapes.serialize());
+              var newPs = JSON.stringify(state.pinnedShapes);
+              if (oldPs !== newPs) {
+                  root.hud.parts.pinnedShapes.deserialize(state.pinnedShapes);
+                  root.hud.parts.pinnedShapes.rerenderFull();
+              }
+          }
       }
     };
   }
@@ -843,6 +894,43 @@ class Mod extends shapez.Mod {
       isRemote: false,
       totalEntitiesPlaced: 0,
       setupHooks: function(root) {
+        if (!shapez.Blueprint.prototype.tryPlace.__mp_hooked) {
+            var origBlueprintPlace = shapez.Blueprint.prototype.tryPlace;
+            shapez.Blueprint.prototype.tryPlace = function (blueprintRoot, tile) {
+                var entitiesToPlace = [];
+                if (!self.actions.isRemote && !self.network.isSpectator) {
+                     for (var i = 0; i < this.entities.length; ++i) {
+                         var entity = this.entities[i];
+                         if (blueprintRoot.logic.checkCanPlaceEntity(entity, { offset: tile })) {
+                             var staticComp = entity.components.StaticMapEntity;
+                             var metaBuilding = staticComp.getMetaBuilding();
+                             entitiesToPlace.push({
+                                 code: metaBuilding.getId(),
+                                 origin: { x: staticComp.origin.x + tile.x, y: staticComp.origin.y + tile.y },
+                                 rotation: staticComp.rotation,
+                                 rotationVariant: staticComp.getRotationVariant(),
+                                 variant: staticComp.getVariant()
+                             });
+                         }
+                     }
+                }
+
+                var res = origBlueprintPlace.apply(this, arguments);
+
+                if (res && entitiesToPlace.length > 0) {
+                     for (var i = 0; i < entitiesToPlace.length; ++i) {
+                          self.network.actionQueue.push({
+                              type: "place",
+                              payload: entitiesToPlace[i]
+                          });
+                          self.actions.totalEntitiesPlaced++;
+                     }
+                }
+                return res;
+            };
+            shapez.Blueprint.prototype.tryPlace.__mp_hooked = true;
+        }
+
         var origPlace = root.logic.tryPlaceBuilding;
         root.logic.tryPlaceBuilding = function (params) {
           var res = origPlace.apply(this, arguments);
@@ -875,6 +963,48 @@ class Mod extends shapez.Mod {
             self.actions.totalEntitiesPlaced--;
           }
           return res;
+        };
+
+        // Hooks for Waypoints
+        var origAddWaypoint = root.hud.parts.waypoints.addWaypoint;
+        root.hud.parts.waypoints.addWaypoint = function(label, position) {
+            if (!self.network.isHost && !self.actions.isRemote) {
+                self.network.send("waypoint_action", { type: "add", label: label, x: position.x, y: position.y });
+            }
+            return origAddWaypoint.apply(this, arguments);
+        };
+
+        var origDeleteWaypoint = root.hud.parts.waypoints.deleteWaypoint;
+        root.hud.parts.waypoints.deleteWaypoint = function(waypoint) {
+            if (!self.network.isHost && !self.actions.isRemote) {
+                self.network.send("waypoint_action", { type: "delete", label: waypoint.label, x: waypoint.center.x, y: waypoint.center.y });
+            }
+            return origDeleteWaypoint.apply(this, arguments);
+        };
+
+        var origRenameWaypoint = root.hud.parts.waypoints.renameWaypoint;
+        root.hud.parts.waypoints.renameWaypoint = function(waypoint, newLabel) {
+            if (!self.network.isHost && !self.actions.isRemote) {
+                self.network.send("waypoint_action", { type: "rename", label: waypoint.label, newLabel: newLabel, x: waypoint.center.x, y: waypoint.center.y });
+            }
+            return origRenameWaypoint.apply(this, arguments);
+        };
+
+        // Hooks for Pinned Shapes
+        var origPinShape = root.hud.parts.pinnedShapes.pinNewShape;
+        root.hud.parts.pinnedShapes.pinNewShape = function(definition) {
+            if (!self.network.isHost && !self.actions.isRemote) {
+                self.network.send("pinned_action", { type: "pin", key: definition.getHash() });
+            }
+            return origPinShape.apply(this, arguments);
+        };
+
+        var origUnpinShape = root.hud.parts.pinnedShapes.unpinShape;
+        root.hud.parts.pinnedShapes.unpinShape = function(key) {
+            if (!self.network.isHost && !self.actions.isRemote) {
+                self.network.send("pinned_action", { type: "unpin", key: key });
+            }
+            return origUnpinShape.apply(this, arguments);
         };
 
         // Share hub progress
