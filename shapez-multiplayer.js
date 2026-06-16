@@ -1014,7 +1014,7 @@ class Mod extends shapez.Mod {
           if (res) {
             if (!self.actions.isRemote && !self.network.isSpectator) {
               var origin = entity.components.StaticMapEntity.origin;
-              var layer = entity.components.StaticMapEntity.getLayer() || "regular";
+              var layer = entity.components.StaticMapEntity.getMetaBuilding().getLayer() || "regular";
               self.network.actionQueue.push({ type: "delete", payload: { x: origin.x, y: origin.y, layer: layer } });
             }
             self.actions.totalEntitiesPlaced--;
