@@ -11,6 +11,10 @@ const METADATA = {
 
 function calculateDelta(oldObj, newObj) {
   if (oldObj === newObj) return undefined;
+  if (Array.isArray(oldObj) || Array.isArray(newObj)) {
+      if (JSON.stringify(oldObj) !== JSON.stringify(newObj)) return newObj;
+      return undefined;
+  }
   if (typeof oldObj !== 'object' || oldObj === null || typeof newObj !== 'object' || newObj === null) return newObj;
   var diff = {};
   var hasChanges = false;
@@ -30,7 +34,7 @@ function calculateDelta(oldObj, newObj) {
 }
 
 function applyDelta(target, delta) {
-  if (typeof delta !== 'object' || delta === null) return delta;
+  if (typeof delta !== 'object' || delta === null || Array.isArray(delta)) return delta;
   for (var key in delta) {
     if (typeof delta[key] === 'object' && delta[key] !== null && target.hasOwnProperty(key) && typeof target[key] === 'object') {
       target[key] = applyDelta(target[key], delta[key]);
@@ -75,19 +79,11 @@ class Mod extends shapez.Mod {
           btn.style.cssText = "display:block; width:100%; max-width:100%; box-sizing:border-box; padding:15px 10px; margin-top:10px; background:#4a148c; color:white; font-weight:bold; font-size:18px; letter-spacing:0.1em; text-transform:uppercase; border:none; border-radius:4px; cursor:pointer; pointer-events:all;";
           btn.onclick = () => self.ui.showLobby();
           
-          const updateBtn = document.createElement("button");
-          updateBtn.innerText = "Check for Mod Updates";
-          updateBtn.className = "styledButton mp-update-btn";
-          updateBtn.style.cssText = "display:block; width:100%; max-width:100%; box-sizing:border-box; padding:10px 10px; margin-top:8px; background:#1e88e5; color:white; font-weight:bold; font-size:12px; letter-spacing:0.1em; text-transform:uppercase; border:none; border-radius:4px; cursor:pointer; pointer-events:all;";
-          updateBtn.onclick = () => self.checkForUpdates(updateBtn);
-          
           const buttons = mainContainer.querySelector(".buttons");
           if (buttons) {
             buttons.parentNode.insertBefore(btn, buttons.nextSibling);
-            buttons.parentNode.insertBefore(updateBtn, btn.nextSibling);
           } else {
             mainContainer.appendChild(btn);
-            mainContainer.appendChild(updateBtn);
           }
         }
       },
@@ -95,8 +91,6 @@ class Mod extends shapez.Mod {
         $old.onLeave.apply(this, arguments);
         const btn = document.querySelector(".mp-btn");
         if (btn) btn.remove();
-        const updateBtn = document.querySelector(".mp-update-btn");
-        if (updateBtn) updateBtn.remove();
       },
       renderSavegames() {
         $old.renderSavegames.apply(this, arguments);
@@ -1258,8 +1252,11 @@ class CursorOverlay extends shapez.BaseHUDPart {
   update() {
     if (!this.mod) return;
     if (this.root.app.tickCount % 6 === 0) {
-      var pos = this.root.app.mouseHandler.getMouseWorldPos();
-      if (pos) this.mod.network.send("cursor", { x: pos.x, y: pos.y });
+      var mousePos = this.root.app.mousePosition;
+      if (mousePos) {
+          var worldPos = this.root.camera.screenToWorld(mousePos);
+          this.mod.network.send("cursor", { x: worldPos.x, y: worldPos.y });
+      }
     }
     
     var now = Date.now();
