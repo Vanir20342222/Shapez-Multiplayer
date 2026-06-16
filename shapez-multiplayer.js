@@ -150,47 +150,38 @@ class Mod extends shapez.Mod {
   }
 
   checkForUpdates(btnEl) {
-      if (btnEl.textContent === "Checking...") return;
+      if (btnEl.textContent === "Updating...") return;
       var origText = btnEl.textContent;
-      btnEl.textContent = "Checking...";
-      var repoUrl = "https://raw.githubusercontent.com/Vanir20342222/Shapez-Multiplayer/main/shapez-multiplayer.js";
-      fetch(repoUrl, { cache: "no-store" })
-          .then(function(res) {
-              if (!res.ok) throw new Error("Network response was not ok");
-              return res.text();
-          })
-          .then(function(code) {
-              var match = code.match(/version:\s*"([^"]+)"/);
-              if (match && match[1]) {
-                  var onlineVersion = match[1];
-                  var currentVersion = METADATA.version;
-                  if (onlineVersion !== currentVersion) {
-                      if (confirm("New version " + onlineVersion + " is available! You have " + currentVersion + ". Download now?")) {
-                          var blob = new Blob([code], { type: "text/javascript" });
-                          var url = URL.createObjectURL(blob);
-                          var a = document.createElement("a");
-                          a.href = url;
-                          a.download = "shapez-multiplayer.js";
-                          document.body.appendChild(a);
-                          a.click();
-                          document.body.removeChild(a);
-                          URL.revokeObjectURL(url);
-                          alert("File downloaded! Please replace your local mod file and restart the game.");
-                      }
-                  } else {
-                      alert("You are on the latest version (" + currentVersion + ")!");
-                  }
-              } else {
-                  throw new Error("Could not parse version from online file.");
-              }
-          })
-          .catch(function(err) {
-              console.error("Update check failed:", err);
-              alert("Failed to check for updates: " + err.message);
-          })
-          .finally(function() {
+      btnEl.textContent = "Updating...";
+      
+      var ws = new WebSocket("ws://localhost:3005");
+      var timeout = setTimeout(function() {
+          if (ws.readyState !== 1) {
+              ws.close();
+              alert("Could not connect to local server on port 3005. Make sure server.js is running locally to auto-update via Git!");
               btnEl.textContent = origText;
-          });
+          }
+      }, 2000);
+      
+      ws.onopen = function() {
+          clearTimeout(timeout);
+          ws.send(JSON.stringify({ type: "server_update" }));
+      };
+      
+      ws.onmessage = function(e) {
+          try {
+              var msg = JSON.parse(e.data);
+              if (msg.type === "server_updated") {
+                  alert("Auto-update successful!\n\n" + msg.payload.message + "\n\nPlease refresh the page to apply changes.");
+              } else if (msg.type === "error") {
+                  alert("Update failed: " + msg.payload.message);
+              }
+          } catch(err) {}
+          ws.close();
+          btnEl.textContent = origText;
+      };
+      
+      ws.onerror = function() {};
   }
 
   onGameStarted(root) {
