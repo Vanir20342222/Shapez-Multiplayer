@@ -607,27 +607,26 @@ class Mod extends shapez.Mod {
         
         if (isJoining) {
           try {
-            var savedRaw = window.localStorage.getItem('mp_saved_servers');
-            var saved = savedRaw ? JSON.parse(savedRaw) : [];
-            if (saved.length > 0) {
-              var listTitle = document.createElement("div");
-              listTitle.textContent = "Saved Servers";
-              listTitle.style.cssText = "color:#aaa; font-size:12px; font-weight:bold; text-transform:uppercase; margin-bottom:8px;";
-              dialog.appendChild(listTitle);
+            var listTitle = document.createElement("div");
+            listTitle.textContent = "Saved Servers";
+            listTitle.style.cssText = "color:#aaa; font-size:12px; font-weight:bold; text-transform:uppercase; margin-bottom:8px;";
+            dialog.appendChild(listTitle);
 
-              var listWrap = document.createElement("div");
-              listWrap.style.cssText = "max-height:120px; overflow-y:auto; margin-bottom:20px; border:1px solid #555; border-radius:4px; background:#2a2e35;";
-              
-              var renderSaved = function() {
-                listWrap.innerHTML = "";
-                var currentRaw = window.localStorage.getItem('mp_saved_servers');
-                var currentSaved = currentRaw ? JSON.parse(currentRaw) : [];
-                if (currentSaved.length === 0) {
-                  listTitle.style.display = 'none';
-                  listWrap.style.display = 'none';
-                  return;
-                }
-                for (var s = 0; s < currentSaved.length; s++) {
+            var listWrap = document.createElement("div");
+            listWrap.style.cssText = "max-height:120px; overflow-y:auto; margin-bottom:20px; border:1px solid #555; border-radius:4px; background:#2a2e35;";
+            
+            var renderSaved = function() {
+              listWrap.innerHTML = "";
+              var currentRaw = window.localStorage.getItem('mp_saved_servers');
+              var currentSaved = currentRaw ? JSON.parse(currentRaw) : [];
+              if (currentSaved.length === 0) {
+                var emptyMsg = document.createElement("div");
+                emptyMsg.textContent = "No saved servers. Join a room to save it!";
+                emptyMsg.style.cssText = "padding:12px; color:#666; font-size:12px; font-style:italic; text-align:center;";
+                listWrap.appendChild(emptyMsg);
+                return;
+              }
+              for (var s = 0; s < currentSaved.length; s++) {
                   var entry = currentSaved[s];
                   var item = document.createElement("div");
                   item.style.cssText = "display:flex; justify-content:space-between; align-items:center; padding:8px 12px; border-bottom:1px solid #444; cursor:pointer;";
@@ -671,7 +670,6 @@ class Mod extends shapez.Mod {
               };
               renderSaved();
               dialog.appendChild(listWrap);
-            }
           } catch(e) { console.error(e); }
         }
         
