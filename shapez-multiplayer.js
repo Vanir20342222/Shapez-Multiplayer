@@ -1,7 +1,7 @@
 const METADATA = {
   id: "multiplayer",
   name: "Multiplayer Mod",
-  version: "1.5.3",
+  version: "1.5.4",
   description: "A host-authority multiplayer mod for Shapez.io. Connect via the external launcher.",
   author: "Vanir",
   website: "https://shapez.io",
@@ -588,22 +588,9 @@ class Mod extends shapez.Mod {
     break;
 
           case "speed_control":
-            if (!self.network.isHost) {
-                var speedInput = document.getElementById("speed");
-                var pauseImg = document.getElementById("pause-image");
-                var pauseBtn = document.getElementById("pause-button");
-                
-                if (speedInput && speedInput.value !== payload.speed) {
-                    speedInput.value = payload.speed;
-                    speedInput.dispatchEvent(new Event("input"));
-                }
-                
-                if (pauseImg && pauseBtn) {
-                    var isPaused = pauseImg.src.indexOf("play") !== -1;
-                    if (isPaused !== payload.paused) {
-                        pauseBtn.click();
-                    }
-                }
+            var isGuest = self.network && self.network.ws && self.network.ws.readyState === 1 && !self.network.isHost;
+            if (isGuest) {
+                self.lastReceivedSpeedState = payload;
             }
             break;
 
@@ -1635,31 +1622,47 @@ class Mod extends shapez.Mod {
         }
         
         // Speed Control Mod Compatibility
-        var speedEl = document.getElementById("speed");
-        var pauseEl = document.getElementById("pause-image");
-        if (speedEl && pauseEl) {
-          self._speedSyncInterval = setInterval(function() {
-              if (!self.network) return;
-              var speedInput = document.getElementById("speed");
-              var pauseImg = document.getElementById("pause-image");
-              
-              if (self.network.isHost) {
-                  if (!speedInput) return;
-                  var state = {
-                      speed: speedInput.value,
-                      paused: pauseImg ? pauseImg.src.indexOf("play") !== -1 : false
-                  };
-                  if (JSON.stringify(state) !== JSON.stringify(self.lastSpeedState)) {
-                      self.lastSpeedState = state;
-                      self.network.send("speed_control", state);
-                  }
-              } else {
-                  if (speedInput) speedInput.style.pointerEvents = "none";
-                  var pauseBtn = document.getElementById("pause-button");
-                  if (pauseBtn) pauseBtn.style.pointerEvents = "none";
-              }
-          }, 200);
-        }
+        self._speedSyncInterval = setInterval(function() {
+            var speedInput = document.getElementById("speed");
+            var pauseImg = document.getElementById("pause-image");
+            var pauseBtn = document.getElementById("pause-button");
+            
+            var isGuest = self.network && self.network.ws && self.network.ws.readyState === 1 && !self.network.isHost;
+            
+            if (isGuest) {
+                if (speedInput) speedInput.style.pointerEvents = "none";
+                if (pauseBtn) pauseBtn.style.pointerEvents = "none";
+                
+                if (self.lastReceivedSpeedState) {
+                    if (speedInput && speedInput.value !== self.lastReceivedSpeedState.speed) {
+                        speedInput.value = self.lastReceivedSpeedState.speed;
+                        speedInput.dispatchEvent(new Event("input"));
+                        speedInput.dispatchEvent(new Event("change"));
+                    }
+                    if (pauseImg && pauseBtn) {
+                        var isPaused = pauseImg.src.indexOf("play") !== -1;
+                        if (isPaused !== self.lastReceivedSpeedState.paused) {
+                            pauseBtn.click();
+                        }
+                    }
+                }
+            } else {
+                if (speedInput) speedInput.style.pointerEvents = "auto";
+                if (pauseBtn) pauseBtn.style.pointerEvents = "auto";
+                
+                if (self.network && self.network.isHost) {
+                    if (!speedInput) return;
+                    var state = {
+                        speed: speedInput.value,
+                        paused: pauseImg ? pauseImg.src.indexOf("play") !== -1 : false
+                    };
+                    if (JSON.stringify(state) !== JSON.stringify(self.lastSpeedState)) {
+                        self.lastSpeedState = state;
+                        self.network.send("speed_control", state);
+                    }
+                }
+            }
+        }, 200);
       },
 
       handleRemote: function(action, from) {
