@@ -1,7 +1,7 @@
 const METADATA = {
   id: "multiplayer",
   name: "Multiplayer Mod",
-  version: "1.5.1",
+  version: "1.5.2",
   description: "A host-authority multiplayer mod for Shapez.io. Connect via the external launcher.",
   author: "Vanir",
   website: "https://shapez.io",
@@ -752,6 +752,31 @@ class Mod extends shapez.Mod {
                     };
                   })(entry);
                   
+                  var btnWrap = document.createElement("div");
+                  btnWrap.style.cssText = "display:flex; align-items:center;";
+            
+                  var joinBtn = document.createElement("button");
+                  joinBtn.textContent = "Join";
+                  joinBtn.style.cssText = "background:#b39ddb; color:#fff; border:none; padding:4px 8px; border-radius:4px; cursor:pointer; font-weight:bold; margin-right:8px;";
+                  (function(ent) {
+                    joinBtn.onclick = function(e) {
+                      e.stopPropagation();
+                      var ipEl = document.getElementById("mp-ip");
+                      var portEl = document.getElementById("mp-port");
+                      var codeEl = document.getElementById("mp-code");
+                      var passEl = document.getElementById("mp-pass");
+                      if(ipEl) ipEl.value = ent.ip;
+                      if(portEl) portEl.value = ent.port;
+                      if(codeEl) codeEl.value = ent.code;
+                      if(passEl && ent.pass) passEl.value = ent.pass;
+                      
+                      var joinBtnEl = document.getElementById("mp-join-btn");
+                      if (joinBtnEl) {
+                        joinBtnEl.click();
+                      }
+                    };
+                  })(entry);
+            
                   var delBtn = document.createElement("button");
                   delBtn.textContent = "\u00D7";
                   delBtn.style.cssText = "background:none; border:none; color:#e53935; font-size:18px; font-weight:bold; cursor:pointer; padding:0 5px;";
@@ -765,9 +790,12 @@ class Mod extends shapez.Mod {
                       renderSaved();
                     };
                   })(s);
-
+            
+                  btnWrap.appendChild(joinBtn);
+                  btnWrap.appendChild(delBtn);
+            
                   item.appendChild(info);
-                  item.appendChild(delBtn);
+                  item.appendChild(btnWrap);
                   listWrap.appendChild(item);
                 }
               };
@@ -1686,6 +1714,7 @@ class Mod extends shapez.Mod {
 
 class CursorOverlay extends shapez.BaseHUDPart {
   initialize() {
+    if (this.cursorInterval) clearInterval(this.cursorInterval);
     this.mod = shapez.MODS.mods.find(function(m) { return m.metadata.id === "multiplayer"; });
     if (this.mod) {
       this.mod.cursorOverlay = this;
@@ -1698,7 +1727,7 @@ class CursorOverlay extends shapez.BaseHUDPart {
     this.cursorInterval = setInterval(() => {
       if (!this.mod || !this.mod.network.ws || this.mod.network.ws.readyState !== 1) return;
       var mousePos = this.root.app.mousePosition;
-      if (mousePos) {
+      if (mousePos && this.root.camera) {
           var worldPos = this.root.camera.screenToWorld(mousePos);
           // 3. Cache last sent X/Y and only send if delta > 0.1
           var dx = Math.abs(worldPos.x - this.lastSentX);
@@ -1750,7 +1779,11 @@ class CursorOverlay extends shapez.BaseHUDPart {
     var toDelete = [];
     this.cursors.forEach(function(data, id) {
       if (now - data.time > 5000) { toDelete.push(id); return; }
-      var screenPos = this.root.camera.worldToScreen(new shapez.Vector(data.x, data.y));
+      
+      var screenPos = null;
+      if (this.root.camera && this.root.camera.worldToScreen) {
+          screenPos = this.root.camera.worldToScreen(new shapez.Vector(data.x, data.y));
+      }
       
       var color = "#b39ddb";
       var name = id;
@@ -1764,21 +1797,28 @@ class CursorOverlay extends shapez.BaseHUDPart {
           }
       }
 
-      // 1. Replaced window.innerWidth/innerHeight with this.root.camera.currentSize
-      var w = this.root.camera.currentSize.x;
-      var h = this.root.camera.currentSize.y;
-      var isOffscreen = screenPos.x < 0 || screenPos.x > w || screenPos.y < 0 || screenPos.y > h;
+      var cachedWindowSize = (this.root.app && this.root.app.cachedWindowSize) || {};
+      var w = cachedWindowSize.width || window.innerWidth || 1920;
+      var h = cachedWindowSize.height || window.innerHeight || 1080;
+      
+      var isOffscreen = !screenPos || isNaN(screenPos.x) || isNaN(screenPos.y) || screenPos.x < 0 || screenPos.x > w || screenPos.y < 0 || screenPos.y > h;
 
       if (isOffscreen) {
           var cx = w / 2;
           var cy = h / 2;
-          var dx = screenPos.x - cx;
-          var dy = screenPos.y - cy;
+          var dx = (screenPos && !isNaN(screenPos.x) ? screenPos.x : 0) - cx;
+          var dy = (screenPos && !isNaN(screenPos.y) ? screenPos.y : 0) - cy;
+          
+          if (dx === 0 && dy === 0) {
+              dx = 1;
+              dy = 1;
+          }
+
           var angle = Math.atan2(dy, dx);
           
           var padding = 25;
-          var halfW = (w / 2) - padding;
-          var halfH = (h / 2) - padding;
+          var halfW = Math.max(1, (w / 2) - padding);
+          var halfH = Math.max(1, (h / 2) - padding);
           
           var tanTheta = Math.tan(angle);
           var intersectX, intersectY;
