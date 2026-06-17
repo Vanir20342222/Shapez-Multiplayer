@@ -296,6 +296,20 @@ class Mod extends shapez.Mod {
       packetSequence: 0,
       lastReceivedSequence: -1,
 
+      disconnect: function() {
+        if (this.syncInterval) clearInterval(this.syncInterval);
+        if (this.pingInterval) clearInterval(this.pingInterval);
+        if (this.actionInterval) clearInterval(this.actionInterval);
+        if (this._speedSyncInterval) clearInterval(this._speedSyncInterval);
+
+        if (this.ws) {
+          this.ws.onclose = null;
+          this.ws.close();
+          this.ws = null;
+        }
+        this.root = null;
+      },
+
       connect: function(serverUrl) {
         var net = this;
         net.serverUrl = serverUrl;
@@ -317,9 +331,11 @@ class Mod extends shapez.Mod {
           };
           net.ws.onerror = reject;
           net.ws.onmessage = function(e) { net.handleMessage(JSON.parse(e.data)); };
-          net.ws.onclose = function() {
+          net.ws.onclose = function(e) {
             if (net.actionInterval) clearInterval(net.actionInterval);
-            console.warn("Disconnected from server");
+            var reason = e && e.reason ? e.reason : "Connection lost";
+            console.warn("Disconnected from server:", reason);
+            showNotification("Disconnected: " + reason);
             var overlay = document.getElementById("mp-status");
             if (overlay) overlay.remove();
             self.ui.removePlayerPanel();
