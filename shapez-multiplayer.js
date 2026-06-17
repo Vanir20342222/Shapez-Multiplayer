@@ -1,7 +1,7 @@
 const METADATA = {
   id: "multiplayer",
   name: "Shapez.io Multiplayer",
-  version: "1.3.1",
+  version: "1.4.0",
   description: "Real-time cooperative multiplayer for shapez.io",
   author: "AI",
   website: "",
@@ -1481,36 +1481,95 @@ class CursorOverlay extends shapez.BaseHUDPart {
           }
       }
 
-      // Draw pointer
-      context.fillStyle = color;
-      context.beginPath();
-      context.moveTo(screenPos.x, screenPos.y);
-      context.lineTo(screenPos.x + 12, screenPos.y + 12);
-      context.lineTo(screenPos.x + 4, screenPos.y + 12);
-      context.lineTo(screenPos.x, screenPos.y + 18);
-      context.closePath();
-      context.fill();
-      context.lineWidth = 1;
-      context.strokeStyle = "#fff";
-      context.stroke();
+      var w = context.canvas.width;
+      var h = context.canvas.height;
+      var isOffscreen = screenPos.x < 0 || screenPos.x > w || screenPos.y < 0 || screenPos.y > h;
 
-      // Draw name badge
-      context.font = "bold 12px sans-serif";
-      var textWidth = context.measureText(name).width;
-      var badgeX = screenPos.x + 12;
-      var badgeY = screenPos.y + 12;
-      
-      context.fillStyle = "rgba(0, 0, 0, 0.7)";
-      context.beginPath();
-      if (context.roundRect) {
-          context.roundRect(badgeX, badgeY, textWidth + 10, 20, 4);
+      if (isOffscreen) {
+          var cx = w / 2;
+          var cy = h / 2;
+          var dx = screenPos.x - cx;
+          var dy = screenPos.y - cy;
+          var angle = Math.atan2(dy, dx);
+          
+          var padding = 25;
+          var halfW = (w / 2) - padding;
+          var halfH = (h / 2) - padding;
+          
+          var tanTheta = Math.tan(angle);
+          var intersectX, intersectY;
+          
+          if (Math.abs(tanTheta) < halfH / halfW) {
+             intersectX = dx > 0 ? halfW : -halfW;
+             intersectY = intersectX * tanTheta;
+          } else {
+             intersectY = dy > 0 ? halfH : -halfH;
+             intersectX = intersectY / tanTheta;
+          }
+          
+          var finalX = cx + intersectX;
+          var finalY = cy + intersectY;
+          
+          context.save();
+          context.translate(finalX, finalY);
+          context.rotate(angle);
+          
+          // Draw edge arrow pointing outward
+          context.fillStyle = color;
+          context.beginPath();
+          context.moveTo(12, 0);
+          context.lineTo(-10, 12);
+          context.lineTo(-4, 0);
+          context.lineTo(-10, -12);
+          context.closePath();
+          context.fill();
+          context.lineWidth = 1.5;
+          context.strokeStyle = "#fff";
+          context.stroke();
+          
+          context.rotate(-angle);
+          context.fillStyle = color;
+          context.font = "bold 13px sans-serif";
+          context.textAlign = "center";
+          context.textBaseline = "middle";
+          
+          // Position initial text slightly inwards from the edge arrow
+          var textDist = -24;
+          context.fillText(name.charAt(0).toUpperCase(), Math.cos(angle) * textDist, Math.sin(angle) * textDist);
+          
+          context.restore();
       } else {
-          context.fillRect(badgeX, badgeY, textWidth + 10, 20);
-      }
-      context.fill();
+          // Draw normal pointer
+          context.fillStyle = color;
+          context.beginPath();
+          context.moveTo(screenPos.x, screenPos.y);
+          context.lineTo(screenPos.x + 12, screenPos.y + 12);
+          context.lineTo(screenPos.x + 4, screenPos.y + 12);
+          context.lineTo(screenPos.x, screenPos.y + 18);
+          context.closePath();
+          context.fill();
+          context.lineWidth = 1;
+          context.strokeStyle = "#fff";
+          context.stroke();
 
-      context.fillStyle = color;
-      context.fillText(name, badgeX + 5, badgeY + 14);
+          // Draw normal name badge
+          context.font = "bold 12px sans-serif";
+          var textWidth = context.measureText(name).width;
+          var badgeX = screenPos.x + 12;
+          var badgeY = screenPos.y + 12;
+          
+          context.fillStyle = "rgba(0, 0, 0, 0.7)";
+          context.beginPath();
+          if (context.roundRect) {
+              context.roundRect(badgeX, badgeY, textWidth + 10, 20, 4);
+          } else {
+              context.fillRect(badgeX, badgeY, textWidth + 10, 20);
+          }
+          context.fill();
+
+          context.fillStyle = color;
+          context.fillText(name, badgeX + 5, badgeY + 14);
+      }
     }.bind(this));
     
     for (var i = 0; i < toDelete.length; i++) {
