@@ -1,7 +1,7 @@
 const METADATA = {
   id: "multiplayer",
   name: "Multiplayer Mod",
-  version: "1.5.2",
+  version: "1.5.3",
   description: "A host-authority multiplayer mod for Shapez.io. Connect via the external launcher.",
   author: "Vanir",
   website: "https://shapez.io",
