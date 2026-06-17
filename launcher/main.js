@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const https = require('https');
 const os = require('os');
+const crypto = require('crypto');
 const { WebSocketServer, WebSocket } = require("ws");
 
 let mainWindow;
@@ -59,6 +60,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
       preload: path.join(__dirname, 'preload.js')
     },
     autoHideMenuBar: true,
@@ -79,7 +81,13 @@ app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
   if (wss) {
+      wss.clients.forEach(client => {
+          if (client.readyState === WebSocket.OPEN) client.close();
+      });
       wss.close();
+      wss = null;
+      rooms.clear();
+      socketInfo.clear();
   }
   if (process.platform !== 'darwin') {
     app.quit();
@@ -90,24 +98,30 @@ app.on('window-all-closed', () => {
 // MOD UPDATER IPC
 // =====================
 ipcMain.handle('check-mod-status', async () => {
-  const modsPath = getModsPath();
-  const modFilePath = path.join(modsPath, 'shapez-multiplayer.js');
-  
-  if (!fs.existsSync(modsPath)) {
-      fs.mkdirSync(modsPath, { recursive: true });
-  }
+  try {
+    const modsPath = getModsPath();
+    const modFilePath = path.join(modsPath, 'shapez-multiplayer.js');
+    
+    if (!fs.existsSync(modsPath)) {
+        fs.mkdirSync(modsPath, { recursive: true });
+    }
 
-  if (fs.existsSync(modFilePath)) {
-      const code = fs.readFileSync(modFilePath, 'utf8');
-      const match = code.match(/version:\s*"([^"]+)"/);
-      return { installed: true, version: match ? match[1] : 'Unknown' };
+    if (fs.existsSync(modFilePath)) {
+        const code = fs.readFileSync(modFilePath, 'utf8');
+        const match = code.match(/version:\s*"([^"]+)"/);
+        return { installed: true, version: match ? match[1] : 'Unknown' };
+    }
+    return { installed: false, version: 'None' };
+  } catch (err) {
+    console.error("Error checking mod status:", err);
+    return { installed: false, version: 'Error' };
   }
-  return { installed: false, version: 'None' };
 });
 
 ipcMain.handle('install-mod', async () => {
   const modsPath = getModsPath();
   const modFilePath = path.join(modsPath, 'shapez-multiplayer.js');
+  const tmpFilePath = modFilePath + '.tmp';
   const timestamp = Date.now();
   const repoUrl = `https://raw.githubusercontent.com/Vanir20342222/Shapez-Multiplayer/main/shapez-multiplayer.js?t=${timestamp}`;
 
@@ -118,15 +132,32 @@ ipcMain.handle('install-mod', async () => {
         reject(new Error(`Failed to download: ${res.statusCode}`));
         return;
       }
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
+      
+      const fileStream = fs.createWriteStream(tmpFilePath);
+      const hash = crypto.createHash('sha256');
+      
+      res.on('data', chunk => hash.update(chunk));
+      res.pipe(fileStream);
+      
+      fileStream.on('close', () => {
         try {
-          fs.writeFileSync(modFilePath, data, 'utf8');
+          const fileHash = hash.digest('hex');
+          const stats = fs.statSync(tmpFilePath);
+          // Simple size validation to act as a security/integrity check if no hash is available
+          if (stats.size < 100) {
+            if (fs.existsSync(tmpFilePath)) fs.unlinkSync(tmpFilePath);
+            return reject(new Error("File too small, possibly corrupted or invalid"));
+          }
+          fs.renameSync(tmpFilePath, modFilePath);
           resolve(true);
         } catch (e) {
           reject(e);
         }
+      });
+      
+      fileStream.on('error', (err) => {
+        if (fs.existsSync(tmpFilePath)) fs.unlink(tmpFilePath, () => reject(err));
+        else reject(err);
       });
     }).on('error', reject);
   });
@@ -134,7 +165,7 @@ ipcMain.handle('install-mod', async () => {
 
 function getModsPath() {
   if (process.platform === 'win32') {
-    var appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
+    var appData = app.getPath('appData');
     return path.join(appData, 'shapez.io', 'mods');
   } else if (process.platform === 'darwin') {
     return path.join(os.homedir(), 'Library', 'Application Support', 'shapez.io', 'mods');
@@ -320,7 +351,26 @@ function handleMessage(ws, message) {
         return;
       }
 
-      const id = from || "Player_" + Math.floor(Math.random() * 1000);
+      let id = from || "Player_" + Math.floor(Math.random() * 1000);
+      
+      // Enforce ID uniqueness
+      let isUnique = false;
+      while (!isUnique) {
+        isUnique = true;
+        if (hostInfo.id === id) {
+          isUnique = false;
+        } else {
+          for (const c of room.clients) {
+            const cInfo = socketInfo.get(c);
+            if (cInfo && cInfo.id === id) {
+              isUnique = false;
+              break;
+            }
+          }
+        }
+        if (!isUnique) id += "_1";
+      }
+
       const color = getRandomColor();
       
       room.clients.add(ws);

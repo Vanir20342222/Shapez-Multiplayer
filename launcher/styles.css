@@ -37,6 +37,7 @@ body {
   font-weight: 700;
   background: linear-gradient(to right, #c4b5fd, var(--accent-primary));
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
@@ -46,6 +47,7 @@ body {
   display: flex;
   gap: 24px;
   overflow-y: auto;
+  flex-wrap: wrap;
 }
 
 .panel {
@@ -58,6 +60,7 @@ body {
   flex-direction: column;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   border: 1px solid rgba(255, 255, 255, 0.02);
+  min-height: 0;
 }
 
 .panel:hover {
@@ -103,6 +106,13 @@ body {
   justify-content: center;
   align-items: center;
   gap: 8px;
+  position: relative;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 .btn-primary {
@@ -169,6 +179,8 @@ body {
   height: 16px;
   animation: spin 1s linear infinite;
   display: none;
+  position: absolute;
+  left: 16px;
 }
 
 @keyframes spin {
@@ -176,7 +188,16 @@ body {
   100% { transform: rotate(360deg); }
 }
 
-#ip-display-container:hover {
-  background: #333840 !important;
+.ip-box {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  border-radius: 6px;
+  gap: 8px;
 }
 
+#ip-display-container:hover {
+  background: #333840;
+}

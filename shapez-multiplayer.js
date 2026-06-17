@@ -10,17 +10,29 @@ const METADATA = {
 };
 
 function showNotification(msg) {
+  var container = document.getElementById("mp-notifications-container");
+  if (!container) {
+    container = document.createElement("div");
+    container.id = "mp-notifications-container";
+    container.style.cssText = "position:fixed;top:20px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;gap:8px;z-index:999999;pointer-events:none;align-items:center;";
+    document.body.appendChild(container);
+  }
+
   var el = document.createElement("div");
-  el.style.cssText = "position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.85);color:#fff;padding:16px 32px;border-radius:8px;z-index:999999;font-size:16px;font-family:sans-serif;pointer-events:none;";
+  el.style.cssText = "background:rgba(0,0,0,0.85);color:#fff;padding:16px 32px;border-radius:8px;font-size:16px;font-family:sans-serif;box-shadow:0 4px 6px rgba(0,0,0,0.3);";
   el.textContent = msg;
-  document.body.appendChild(el);
+  
+  container.appendChild(el);
   setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, 5000);
 }
 
 function calculateDelta(oldObj, newObj) {
   if (oldObj === newObj) return undefined;
   if (Array.isArray(oldObj) || Array.isArray(newObj)) {
-      if (JSON.stringify(oldObj) !== JSON.stringify(newObj)) return newObj;
+      if (!Array.isArray(oldObj) || !Array.isArray(newObj) || oldObj.length !== newObj.length) return newObj;
+      for (var i = 0; i < oldObj.length; i++) {
+          if (calculateDelta(oldObj[i], newObj[i]) !== undefined) return newObj;
+      }
       return undefined;
   }
   if (typeof oldObj !== 'object' || oldObj === null || typeof newObj !== 'object' || newObj === null) return newObj;
@@ -56,7 +68,7 @@ function applyDelta(target, delta) {
     }
     if (Array.isArray(delta[key])) {
       target[key] = delta[key];
-    } else if (typeof target[key] === 'object' && target[key] !== null && typeof delta[key] === 'object') {
+    } else if (typeof target[key] === 'object' && target[key] !== null && !Array.isArray(target[key]) && typeof delta[key] === 'object') {
       applyDelta(target[key], delta[key]);
     } else {
       target[key] = delta[key];
@@ -82,6 +94,17 @@ class Mod extends shapez.Mod {
     } catch (e) {
       console.error("Multiplayer Mod: Error during init:", e);
     }
+  }
+
+  cleanupUI() {
+    const chatWrapper = document.getElementById("mp-chat-wrapper");
+    if (chatWrapper) chatWrapper.remove();
+
+    const statusOverlay = document.getElementById("mp-status");
+    if (statusOverlay) statusOverlay.remove();
+
+    const loadingOverlay = document.getElementById("mp-loading-overlay");
+    if (loadingOverlay) loadingOverlay.remove();
   }
 
   registerHooks() {
@@ -407,6 +430,7 @@ class Mod extends shapez.Mod {
                 if (payload.map_hash !== undefined) {
                     self.actions.totalEntitiesPlaced = payload.map_hash;
                 }
+                self._lastSyncObj = JSON.parse(JSON.stringify(payload.sync_obj || payload));
                 shapez.GLOBAL_APP.stateMgr.moveToState("InGameState", { savegame: joinSave, gameModeId: "regularMode" });
             });
             break;
@@ -525,19 +549,27 @@ class Mod extends shapez.Mod {
             break;
 
           case "action_batch":
-            if (!self.network.isHost && payload.seq !== undefined) {
-                if (self.network.lastReceivedSequence !== -1 && payload.seq !== self.network.lastReceivedSequence + 1) {
-                    console.warn("Packet loss detected! Expected " + (self.network.lastReceivedSequence + 1) + " but got " + payload.seq);
-                    self.network.send("request_snapshot", {});
-                }
-                self.network.lastReceivedSequence = payload.seq;
-            }
-            if (payload.actions) {
-                for (var i = 0; i < payload.actions.length; i++) {
-                    self.actions.handleRemote(payload.actions[i], from);
-                }
-            }
-            break;
+    if (from === self.network.playerId) return; // Ignore echoes
+
+    if (!self.network.lastReceivedSequences) {
+        self.network.lastReceivedSequences = {};
+    }
+
+    if (!self.network.isHost && payload.seq !== undefined) {
+        let lastSeq = self.network.lastReceivedSequences[from];
+        if (lastSeq !== undefined && payload.seq !== lastSeq + 1) {
+            console.warn("Packet loss detected! Expected " + (lastSeq + 1) + " but got " + payload.seq);
+            self.network.send("request_snapshot", {});
+        }
+        self.network.lastReceivedSequences[from] = payload.seq;
+    }
+    
+    if (payload.actions) {
+        for (var i = 0; i < payload.actions.length; i++) {
+            self.actions.handleRemote(payload.actions[i], from);
+        }
+    }
+    break;
 
           case "speed_control":
             if (!self.network.isHost) {
@@ -628,8 +660,9 @@ class Mod extends shapez.Mod {
             shapez.GLOBAL_APP.stateMgr.moveToState("MainMenuState");
             break;
 
-          case "player_left":
+                    case "player_left":
             this.players.delete(payload.id);
+            if (self.cursorOverlay) self.cursorOverlay.cursors.delete(payload.id);
             if (payload.wasHost) {
               showNotification("Host disconnected");
               shapez.GLOBAL_APP.stateMgr.moveToState("MainMenuState");
@@ -1196,15 +1229,26 @@ class Mod extends shapez.Mod {
 
       appendChatMessage: function(sender, text) {
         var log = document.getElementById("mp-hud-chat-log");
+        var menuLog = document.getElementById("mp-chat-log");
+        
+        var msgEl = document.createElement("div");
+        msgEl.style.cssText = "background:rgba(0,0,0,0.6); color:white; padding:4px 8px; border-radius:4px; font-size:13px; margin-bottom:4px; word-wrap:break-word; text-shadow:1px 1px 0 #000; animation: mpFadeOut 10s forwards;";
+        var nameEl = document.createElement("b");
+        nameEl.textContent = sender + ": ";
+        msgEl.appendChild(nameEl);
+        msgEl.appendChild(document.createTextNode(text));
+        
         if (log) {
-            var msgEl = document.createElement("div");
-            msgEl.style.cssText = "background:rgba(0,0,0,0.6); color:white; padding:4px 8px; border-radius:4px; font-size:13px; margin-bottom:4px; word-wrap:break-word; text-shadow:1px 1px 0 #000; animation: mpFadeOut 10s forwards;";
-            var nameEl = document.createElement("b");
-            nameEl.textContent = sender + ": ";
-            msgEl.appendChild(nameEl);
-            msgEl.appendChild(document.createTextNode(text));
             log.appendChild(msgEl);
             log.scrollTop = log.scrollHeight;
+            setTimeout(function() { if (msgEl.parentNode) msgEl.parentNode.removeChild(msgEl); }, 10000);
+        }
+        
+        if (menuLog) {
+            var clonedMsg = msgEl.cloneNode(true);
+            menuLog.appendChild(clonedMsg);
+            menuLog.scrollTop = menuLog.scrollHeight;
+            setTimeout(function() { if (clonedMsg.parentNode) clonedMsg.parentNode.removeChild(clonedMsg); }, 10000);
         }
       },
 
@@ -1301,6 +1345,14 @@ class Mod extends shapez.Mod {
               }
           }
           if (state.waypoints && root.hud.parts.waypoints) {
+              if (Array.isArray(state.waypoints)) {
+                  state.waypoints = state.waypoints.map(wp => {
+                      if (wp && wp.center) {
+                          wp.center = new shapez.Vector(wp.center.x, wp.center.y);
+                      }
+                      return wp;
+                  });
+              }
               var oldWp = JSON.stringify(root.hud.parts.waypoints.serialize());
               var newWp = JSON.stringify(state.waypoints);
               if (oldWp !== newWp) {
@@ -1639,18 +1691,33 @@ class CursorOverlay extends shapez.BaseHUDPart {
       this.mod.cursorOverlay = this;
     }
     this.cursors = new Map();
-  }
-  update() {
-    if (!this.mod) return;
-    if (!this.mod.network.ws || this.mod.network.ws.readyState !== 1) return;
-    if (this.root.app.tickCount % 6 === 0) {
+    this.lastSentX = 0;
+    this.lastSentY = 0;
+
+    // Broadcasting moved to setInterval for 100ms real-time updates
+    this.cursorInterval = setInterval(() => {
+      if (!this.mod || !this.mod.network.ws || this.mod.network.ws.readyState !== 1) return;
       var mousePos = this.root.app.mousePosition;
       if (mousePos) {
           var worldPos = this.root.camera.screenToWorld(mousePos);
-          this.mod.network.send("cursor", { x: worldPos.x, y: worldPos.y });
+          // 3. Cache last sent X/Y and only send if delta > 0.1
+          var dx = Math.abs(worldPos.x - this.lastSentX);
+          var dy = Math.abs(worldPos.y - this.lastSentY);
+          if (dx > 0.1 || dy > 0.1) {
+              this.mod.network.send("cursor", { x: worldPos.x, y: worldPos.y });
+              this.lastSentX = worldPos.x;
+              this.lastSentY = worldPos.y;
+          }
       }
-    }
+    }, 100);
+  }
+
+  update() {
+    if (!this.mod) return;
+    if (!this.mod.network.ws || this.mod.network.ws.readyState !== 1) return;
     
+    // Cursor broadcasting logic removed from tick-based update()
+
     var now = Date.now();
     this.cursors.forEach(function(data, id) {
        if (data.targetX !== undefined) {
@@ -1660,6 +1727,7 @@ class CursorOverlay extends shapez.BaseHUDPart {
        }
     });
   }
+
   updateRemote(id, pos) {
     if (!this.cursors) this.cursors = new Map();
     var existing = this.cursors.get(id);
@@ -1674,6 +1742,7 @@ class CursorOverlay extends shapez.BaseHUDPart {
         this.cursors.set(id, { x: pos.x, y: pos.y, startX: pos.x, startY: pos.y, targetX: pos.x, targetY: pos.y, lastUpdate: Date.now(), time: Date.now() });
     }
   }
+
   drawOverlays(parameters) {
     if (!this.cursors) return;
     var context = parameters.context;
@@ -1695,8 +1764,9 @@ class CursorOverlay extends shapez.BaseHUDPart {
           }
       }
 
-      var w = window.innerWidth;
-      var h = window.innerHeight;
+      // 1. Replaced window.innerWidth/innerHeight with this.root.camera.currentSize
+      var w = this.root.camera.currentSize.x;
+      var h = this.root.camera.currentSize.y;
       var isOffscreen = screenPos.x < 0 || screenPos.x > w || screenPos.y < 0 || screenPos.y > h;
 
       if (isOffscreen) {

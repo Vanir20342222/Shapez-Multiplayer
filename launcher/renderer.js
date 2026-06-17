@@ -10,6 +10,7 @@ const connectionStatus = document.getElementById('connection-status');
 
 let isServerRunning = false;
 let currentPublicIp = 'Unknown';
+let updateResetTimer;
 
 // ---------------------
 // Initialization
@@ -29,23 +30,25 @@ async function init() {
 
   ipContainer.addEventListener('click', () => {
     if (currentPublicIp && currentPublicIp !== 'Unknown' && currentPublicIp !== 'Failed') {
-      // M16: Error-handle clipboard write
-      navigator.clipboard.writeText(currentPublicIp).then(() => {
-        const oldText = ipEl.textContent;
-        ipEl.textContent = 'Copied!';
-        ipEl.style.color = '#43a047';
-        setTimeout(() => {
-          ipEl.textContent = oldText;
-          ipEl.style.color = '#b39ddb';
-        }, 1500);
-      }).catch(() => {
-        ipEl.textContent = 'Copy failed';
-        ipEl.style.color = 'var(--error)';
-        setTimeout(() => {
-          ipEl.textContent = currentPublicIp;
-          ipEl.style.color = '#b39ddb';
-        }, 1500);
-      });
+      if (navigator.clipboard) {
+        // M16: Error-handle clipboard write
+        navigator.clipboard.writeText(currentPublicIp).then(() => {
+          const oldText = ipEl.textContent;
+          ipEl.textContent = 'Copied!';
+          ipEl.style.color = '#43a047';
+          setTimeout(() => {
+            ipEl.textContent = oldText;
+            ipEl.style.color = '#b39ddb';
+          }, 1500);
+        }).catch(() => {
+          ipEl.textContent = 'Copy failed';
+          ipEl.style.color = 'var(--error)';
+          setTimeout(() => {
+            ipEl.textContent = currentPublicIp;
+            ipEl.style.color = '#b39ddb';
+          }, 1500);
+        });
+      }
     }
   });
 
@@ -82,6 +85,7 @@ async function refreshModStatus() {
 }
 
 btnUpdate.addEventListener('click', async () => {
+  clearTimeout(updateResetTimer);
   btnUpdate.disabled = true;
   updateText.textContent = 'Downloading...';
   updateLoader.style.display = 'block';
@@ -92,7 +96,7 @@ btnUpdate.addEventListener('click', async () => {
     updateText.textContent = 'Update Successful!';
     btnUpdate.className = 'btn btn-primary';
     btnUpdate.style.background = 'linear-gradient(135deg, var(--success) 0%, #059669 100%)';
-    setTimeout(() => {
+    updateResetTimer = setTimeout(() => {
         updateText.textContent = 'Install / Update Mod';
         btnUpdate.className = 'btn btn-primary';
         btnUpdate.style.background = '';
@@ -104,7 +108,7 @@ btnUpdate.addEventListener('click', async () => {
     btnUpdate.disabled = false;
     updateLoader.style.display = 'none';
     // L5: Auto-reset error state after 5 seconds
-    setTimeout(() => {
+    updateResetTimer = setTimeout(() => {
       updateText.textContent = 'Install / Update Mod';
       btnUpdate.className = 'btn btn-primary';
       btnUpdate.style.background = '';
@@ -130,23 +134,44 @@ function appendLog(text, isError = false) {
 
 btnServer.addEventListener('click', async () => {
   if (isServerRunning) {
-      await window.electronAPI.stopServer();
+      btnServer.disabled = true;
+      btnServer.textContent = 'Stopping...';
+      try {
+          await window.electronAPI.stopServer();
+      } catch (err) {
+          appendLog('Error stopping server: ' + err.message, true);
+          btnServer.disabled = false;
+          btnServer.textContent = 'Stop Server';
+      }
   } else {
       btnServer.disabled = true;
       btnServer.textContent = 'Starting...';
-      const res = await window.electronAPI.startServer();
-      if (!res.success) {
-          appendLog(res.message, true);
+      serverLogs.innerHTML = ''; // Clear logs on start
+      isServerRunning = true; // Optimistically set to prevent double starts
+
+      try {
+          const res = await window.electronAPI.startServer();
+          // If server stopped before startServer resolved, isServerRunning will be false
+          if (!isServerRunning) {
+              return;
+          }
+          if (!res.success) {
+              isServerRunning = false;
+              appendLog(res.message, true);
+              btnServer.disabled = false;
+              btnServer.textContent = 'Start Server';
+          } else {
+              btnServer.disabled = false;
+              btnServer.textContent = 'Stop Server';
+              btnServer.className = 'btn btn-danger';
+              connectionStatus.textContent = 'Server Running';
+              connectionStatus.classList.add('active');
+          }
+      } catch (err) {
+          isServerRunning = false;
+          appendLog('Error starting server: ' + err.message, true);
           btnServer.disabled = false;
           btnServer.textContent = 'Start Server';
-      } else {
-          isServerRunning = true;
-          btnServer.disabled = false;
-          btnServer.textContent = 'Stop Server';
-          btnServer.className = 'btn btn-danger';
-          connectionStatus.textContent = 'Server Running';
-          connectionStatus.classList.add('active');
-          serverLogs.innerHTML = ''; // Clear logs on start
       }
   }
 });
@@ -161,6 +186,7 @@ window.electronAPI.onServerError((data) => {
 
 window.electronAPI.onServerStopped((code) => {
     isServerRunning = false;
+    btnServer.disabled = false;
     btnServer.textContent = 'Start Server';
     btnServer.className = 'btn btn-primary';
     connectionStatus.textContent = 'Server Offline';

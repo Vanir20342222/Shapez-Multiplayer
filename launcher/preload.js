@@ -6,7 +6,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   installMod: () => ipcRenderer.invoke('install-mod'),
   startServer: () => ipcRenderer.invoke('start-server'),
   stopServer: () => ipcRenderer.invoke('stop-server'),
-  onServerLog: (callback) => ipcRenderer.on('server-log', (_event, data) => callback(data)),
-  onServerError: (callback) => ipcRenderer.on('server-error', (_event, data) => callback(data)),
-  onServerStopped: (callback) => ipcRenderer.on('server-stopped', (_event, code) => callback(code)),
+  onServerLog: (callback) => {
+    const fn = (_event, data) => callback(data);
+    ipcRenderer.on('server-log', fn);
+    return () => ipcRenderer.removeListener('server-log', fn);
+  },
+  onServerError: (callback) => {
+    const fn = (_event, data) => callback(data);
+    ipcRenderer.on('server-error', fn);
+    return () => ipcRenderer.removeListener('server-error', fn);
+  },
+  onServerStopped: (callback) => {
+    const fn = (_event, code) => callback(code);
+    ipcRenderer.on('server-stopped', fn);
+    return () => ipcRenderer.removeListener('server-stopped', fn);
+  },
 });
