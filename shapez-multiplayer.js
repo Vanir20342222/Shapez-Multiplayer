@@ -1,10 +1,10 @@
 const METADATA = {
   id: "multiplayer",
-  name: "Shapez.io Multiplayer",
-  version: "1.5.0",
-  description: "Real-time cooperative multiplayer for shapez.io",
-  author: "AI",
-  website: "",
+  name: "Multiplayer Mod",
+  version: "1.5.1",
+  description: "A host-authority multiplayer mod for Shapez.io. Connect via the external launcher.",
+  author: "Vanir",
+  website: "https://shapez.io",
   minimumGameVersion: ">=1.5.0",
   doesNotAffectSavegame: false
 };
