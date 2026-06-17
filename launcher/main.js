@@ -103,7 +103,8 @@ ipcMain.handle('check-mod-status', async () => {
 ipcMain.handle('install-mod', async () => {
   const modsPath = getModsPath();
   const modFilePath = path.join(modsPath, 'shapez-multiplayer.js');
-  const repoUrl = "https://raw.githubusercontent.com/Vanir20342222/Shapez-Multiplayer/main/shapez-multiplayer.js";
+  const timestamp = Date.now();
+  const repoUrl = `https://raw.githubusercontent.com/Vanir20342222/Shapez-Multiplayer/main/shapez-multiplayer.js?t=${timestamp}`;
 
   return new Promise((resolve, reject) => {
     https.get(repoUrl, (res) => {
@@ -134,6 +135,25 @@ function getModsPath() {
     return path.join(os.homedir(), '.local', 'share', 'shapez.io', 'mods');
   }
 }
+
+ipcMain.handle('get-public-ip', async () => {
+  return new Promise((resolve, reject) => {
+    https.get('https://api.ipify.org?format=json', (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          resolve(parsed.ip);
+        } catch(e) {
+          resolve('Unknown');
+        }
+      });
+    }).on('error', () => {
+      resolve('Unknown');
+    });
+  });
+});
 
 // =====================
 // SERVER IPC

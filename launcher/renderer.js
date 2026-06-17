@@ -11,6 +11,39 @@ const serverLogs = document.getElementById('server-logs');
 const connectionStatus = document.getElementById('connection-status');
 
 let isServerRunning = false;
+let currentPublicIp = 'Unknown';
+
+// ---------------------
+// Initialization
+// ---------------------
+async function init() {
+  const ipEl = document.getElementById('public-ip');
+  const ipContainer = document.getElementById('ip-display-container');
+  
+  try {
+    currentPublicIp = await ipcRenderer.invoke('get-public-ip');
+    ipEl.textContent = currentPublicIp;
+  } catch(e) {
+    ipEl.textContent = 'Failed';
+  }
+
+  ipContainer.addEventListener('click', () => {
+    if (currentPublicIp && currentPublicIp !== 'Unknown' && currentPublicIp !== 'Failed') {
+      navigator.clipboard.writeText(currentPublicIp);
+      const oldText = ipEl.textContent;
+      ipEl.textContent = 'Copied!';
+      ipEl.style.color = '#43a047';
+      setTimeout(() => {
+        ipEl.textContent = oldText;
+        ipEl.style.color = '#b39ddb';
+      }, 1500);
+    }
+  });
+
+  refreshModStatus();
+}
+
+window.addEventListener('DOMContentLoaded', init);
 
 // ---------------------
 // Mod Updater Logic

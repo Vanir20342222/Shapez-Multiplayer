@@ -52,9 +52,15 @@
         Host a multiplayer room directly from your PC. Friends can join you once the server is running.
       </p>
 
-      <button id="btn-server" class="btn btn-primary" style="margin-bottom: 16px;">
-        Start Server
-      </button>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px;">
+        <button id="btn-server" class="btn btn-primary" style="flex:1; margin-right: 12px;">
+          Start Server
+        </button>
+        <div id="ip-display-container" style="flex:1; background: #2a2e35; border: 1px solid #555; border-radius: 8px; padding: 10px; text-align:center; cursor:pointer; transition: 0.2s;" onmouseenter="this.style.background='#333840'" onmouseleave="this.style.background='#2a2e35'">
+          <span style="color:#aaa; font-size: 13px;">Public IP: </span>
+          <strong id="public-ip" style="color:#b39ddb;">Fetching...</strong>
+        </div>
+      </div>
 
       <div class="log-container" id="server-logs">
         <div class="log-entry" style="color:var(--text-secondary)">[System] Server stopped. Ready to launch.</div>
