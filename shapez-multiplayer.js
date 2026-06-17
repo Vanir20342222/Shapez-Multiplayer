@@ -1,7 +1,7 @@
 const METADATA = {
   id: "multiplayer",
   name: "Shapez.io Multiplayer",
-  version: "1.2.0",
+  version: "1.3.0",
   description: "Real-time cooperative multiplayer for shapez.io",
   author: "AI",
   website: "",
