@@ -1,7 +1,7 @@
 const METADATA = {
   id: "multiplayer",
   name: "Shapez.io Multiplayer",
-  version: "1.4.2",
+  version: "1.4.3",
   description: "Real-time cooperative multiplayer for shapez.io",
   author: "AI",
   website: "",
@@ -391,7 +391,7 @@ class Mod extends shapez.Mod {
                 try {
                    var wpPart = self.root.hud.parts.waypoints;
                    if (payload.type === "add") {
-                       wpPart.addWaypoint(payload.label, {x: payload.x, y: payload.y});
+                       wpPart.addWaypoint(payload.label, new shapez.Vector(payload.x, payload.y));
                    } else if (payload.type === "delete" || payload.type === "rename") {
                        var wp = wpPart.waypoints.find(w => w.label === payload.label && Math.abs(w.center.x - payload.x) < 0.1 && Math.abs(w.center.y - payload.y) < 0.1);
                        if (wp) {
