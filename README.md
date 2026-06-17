@@ -1,74 +1,71 @@
-<div align="center">
-  <h1>⚙️ Shapez Multiplayer Mod ⚙️</h1>
-  <p><b>Real-time cooperative multiplayer for shapez.io!</b></p>
-</div>
+# Shapez.io Multiplayer Mod
 
-> [!WARNING]
-> **Disclaimer:** This mod was completely *vibecoded* by AI! It is currently in **Alpha**, so expect bugs, weird sync issues, and funny behavior. Use at your own risk!
+A real-time cooperative multiplayer framework for shapez.io.
 
-Share a single factory map with friends, place buildings together, and deliver shapes to a shared hub. This project includes a single-file game mod and a lightweight Node.js WebSocket relay server.
+> **Note:** This mod is currently in Alpha. While core synchronization logic is robust, edge cases may occasionally trigger desyncs. Use at your own risk.
 
-## ✨ Features
-* **Co-op Factory Building**: Place and delete belts, miners, and buildings together in real time.
-* **Hub Syncing**: Shape deliveries and upgrades sync perfectly between all players.
-* **Player Presence**: See live colored cursors mapping exactly where your friends are working.
-* **In-Game Chat**: Press `J` to open the Player Panel and chat with your room.
-* **Room Security**: Create private password-protected rooms and limit player capacity.
-* **Spectator Mode**: Join games as a read-only spectator just to watch the factory grow.
-* **Auto-Healing**: Deep synchronization logic handles lag gracefully and heals desyncs instantly.
+Share a single factory map with friends, build cooperative infrastructure, and deliver shapes to a shared hub. This project is powered by a custom client-side mod and a lightweight, standalone WebSocket relay server.
+
+## Features
+* **Co-op Factory Building:** Place and delete belts, miners, and buildings together in real time.
+* **Hub Synchronization:** Shape deliveries and hub upgrade goals sync perfectly between all connected clients.
+* **Live Player Presence:** View colored cursors indicating exactly where other players are actively working.
+* **In-Game Chat Overlay:** Press `J` to open the Player Panel and communicate with your room.
+* **Room Security:** Create private, password-protected rooms and limit maximum player capacity.
+* **Spectator Mode:** Join games as a read-only spectator to observe factory growth.
+* **Auto-Healing State:** Advanced packet sequencing and deep synchronization logic handles network lag gracefully, recovering instantly from dropped packets.
 
 ---
 
-## 🚀 1. Installing the Mod & Server
+## 1. Installation & Server Hosting
 
-The easiest way to install and manage the multiplayer mod is using the **Shapez Multiplayer Launcher**.
+The multiplayer ecosystem is entirely managed through the **Shapez Multiplayer Launcher**. This standalone application automatically installs the mod into your local game directory and functions as the host server.
 
-1. Download the latest `shapez-multiplayer-launcher` from this repository's `launcher` folder.
-2. Launch the application.
-3. Click **Install / Update Mod**. The launcher will automatically find your game files and inject the absolute latest version of the multiplayer mod directly into your `mods` folder!
-4. To host a game, simply click **Start Server** right inside the launcher window.
+### Setup Instructions
+1. Navigate to the **[Releases](../../releases)** page of this repository.
+2. Download the appropriate executable for your Operating System (`.exe` for Windows, `.AppImage` for Linux).
+3. Run the Launcher application.
+4. Click **Install / Update Mod**. The launcher will automatically locate your shapez.io installation and inject the latest mod code.
+5. If you intend to host the session, click **Start Server** directly within the Launcher.
 
-> [!CAUTION]
-> **Important Note on Other Mods:** All players joining a lobby **MUST** have the exact same mods installed in their mods folder as the host. If the host has other mods (like `usage_statistics.js`) and you do not, your game will crash when trying to sync the factory!
+> **Caution Regarding Mod Conflicts:** All players joining a session **must** have identical mods installed. If the host is running additional mods (e.g., `usage_statistics.js`) and guests are not, the game will critically desync when attempting to build the factory state. 
 
 ---
 
-## 🌍 2. Playing with Friends (Port Forwarding)
+## 2. Networking (Port Forwarding)
 
-If you are just playing on the same computer or local Wi-Fi, you can use `localhost` or your local IP address (e.g., `192.168.1.50`). However, to play with friends over the internet, the person running the server must **Port Forward** port `3005`.
+If you are playing on a local network (LAN), players can connect using your local IPv4 address (e.g., `192.168.1.50`). To play over the internet, the host must expose the server port.
 
 ### Method A: Port Forwarding (Recommended)
-1. Log into your home router's admin panel (usually `192.168.1.1` or `10.0.0.1`).
-2. Find the **Port Forwarding** section.
-3. Add a new rule forwarding **TCP port 3005** to the local IPv4 address of the computer running the Node.js server.
-4. Find your Public IP Address by googling "What is my IP".
-5. Give your Public IP Address to your friends. They will use this to connect to your server.
+1. Access your home router's administration panel.
+2. Locate the **Port Forwarding** configuration.
+3. Create a rule forwarding **TCP port 3005** to the local IPv4 address of the host machine.
+4. Provide your Public IP Address to your guests.
 
-### Method B: Tunnels (No Router Access needed)
-If you cannot port forward, you can use a tunneling service:
-* **Ngrok**: Run `ngrok tcp 3005`. It will give you a public URL (e.g., `tcp://0.tcp.ngrok.io:12345`). Your friends will type `0.tcp.ngrok.io` as the IP and `12345` as the port.
-* **Hamachi/Radmin VPN**: Both you and your friends install the VPN program, join the same network, and your friends will connect to your VPN-provided IP address.
+### Method B: Virtual Private Networks / Tunnels
+If router configuration is unavailable, utilize a tunneling service:
+* **Ngrok:** Execute `ngrok tcp 3005` to generate a public TCP tunnel URL. Guests will input the provided URL and dynamic port.
+* **Hamachi / Radmin VPN:** The host and guests join the same virtual network, allowing guests to connect via the host's VPN-assigned IP address.
 
 ---
 
-## 🎮 3. How to Play
+## 3. How to Play
 
-### Hosting a Game
-1. Launch the game and load into a save file.
-2. Press `Esc` and click **Host Multiplayer**.
-3. Enter the IP of the server. (If you are running the Node.js server on the same computer you are playing on, type `localhost`).
-4. Enter `3005` as the port.
-5. Provide a password and max player limit (optional).
-6. Click **Host Game**. You will be given a random 6-character Room Code.
+### Hosting a Session
+1. Start the server via the Multiplayer Launcher.
+2. Launch shapez.io and load a save file.
+3. Press `Esc` and select **Host Multiplayer**.
+4. Enter your connection details. If the Launcher is running on your machine, use `localhost` and port `3005`.
+5. Configure a password and player limit if desired, then click **Host Game**.
+6. Distribute the generated 6-character Room Code to your guests.
 
-### Joining a Game
-1. On the Main Menu, click **Multiplayer**.
-2. Enter the Server IP (Your friend's Public IP, Ngrok URL, or Hamachi IP).
-3. Enter `3005` as the port (or the custom Ngrok port).
-4. Type in the **Room Code** your friend gave you.
-5. Click **Join**. You will seamlessly load into their factory!
+### Joining a Session
+1. Launch shapez.io and select **Multiplayer** from the Main Menu.
+2. Enter the host's Public IP, VPN IP, or Tunnel URL.
+3. Enter port `3005` (or the specific port provided by your tunnel service).
+4. Input the Room Code and click **Join**.
 
 ---
 
 ### Shortcuts
-* Press `J` while in-game to open the Player Panel. Here you can chat, view connected players, and (if you are the host) kick players or transfer host privileges.
+* **`J`** - Toggle Player Panel. Hosts can utilize this panel to kick disruptive players or transfer host privileges.
