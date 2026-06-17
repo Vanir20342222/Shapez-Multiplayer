@@ -417,6 +417,20 @@ function handleMessage(ws, message) {
       break;
     }
 
+    case "cursor": {
+      const info = socketInfo.get(ws);
+      if (!info) return;
+      const room = rooms.get(info.room);
+      if (!room) return;
+      
+      const cursorMsg = JSON.stringify(message);
+      if (room.host.readyState === WebSocket.OPEN && room.host !== ws) room.host.send(cursorMsg);
+      room.clients.forEach(c => {
+        if (c.readyState === WebSocket.OPEN && c !== ws) c.send(cursorMsg);
+      });
+      break;
+    }
+
     case "cursor_update":
     case "blueprint_chunk":
     case "blueprint":

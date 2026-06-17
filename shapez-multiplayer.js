@@ -1,7 +1,7 @@
 const METADATA = {
   id: "multiplayer",
   name: "Shapez.io Multiplayer",
-  version: "1.4.1",
+  version: "1.4.2",
   description: "Real-time cooperative multiplayer for shapez.io",
   author: "AI",
   website: "",
@@ -188,6 +188,7 @@ class Mod extends shapez.Mod {
   }
 
   onGameStarted(root) {
+    var self = this;
     this.root = root;
     this.actions.setupHooks(root);
 
