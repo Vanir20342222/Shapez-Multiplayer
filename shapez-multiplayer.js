@@ -1248,6 +1248,7 @@ class Mod extends shapez.Mod {
           document.removeEventListener("keydown", self._chatKeyHandler, true);
         }
         self._chatKeyHandler = function(e) {
+            var wasTyping = isTyping; // Capture state
             if (e.key === "Enter" && self.root) {
                 if (isTyping) {
                     var text = input.value.trim();
@@ -1270,7 +1271,7 @@ class Mod extends shapez.Mod {
                 inputWrap.style.display = "none";
                 isTyping = false;
             }
-            if (isTyping) {
+            if (wasTyping || isTyping) {
                 e.stopPropagation();
             }
         };
