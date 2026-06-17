@@ -605,6 +605,76 @@ class Mod extends shapez.Mod {
         title.style.cssText = "margin:0 0 20px 0; color:#b39ddb; text-transform:uppercase; letter-spacing:0.05em; font-size:20px;";
         dialog.appendChild(title);
         
+        if (isJoining) {
+          try {
+            var savedRaw = window.localStorage.getItem('mp_saved_servers');
+            var saved = savedRaw ? JSON.parse(savedRaw) : [];
+            if (saved.length > 0) {
+              var listTitle = document.createElement("div");
+              listTitle.textContent = "Saved Servers";
+              listTitle.style.cssText = "color:#aaa; font-size:12px; font-weight:bold; text-transform:uppercase; margin-bottom:8px;";
+              dialog.appendChild(listTitle);
+
+              var listWrap = document.createElement("div");
+              listWrap.style.cssText = "max-height:120px; overflow-y:auto; margin-bottom:20px; border:1px solid #555; border-radius:4px; background:#2a2e35;";
+              
+              var renderSaved = function() {
+                listWrap.innerHTML = "";
+                var currentRaw = window.localStorage.getItem('mp_saved_servers');
+                var currentSaved = currentRaw ? JSON.parse(currentRaw) : [];
+                if (currentSaved.length === 0) {
+                  listTitle.style.display = 'none';
+                  listWrap.style.display = 'none';
+                  return;
+                }
+                for (var s = 0; s < currentSaved.length; s++) {
+                  var entry = currentSaved[s];
+                  var item = document.createElement("div");
+                  item.style.cssText = "display:flex; justify-content:space-between; align-items:center; padding:8px 12px; border-bottom:1px solid #444; cursor:pointer;";
+                  item.onmouseenter = function(e) { e.currentTarget.style.background = "#333840"; };
+                  item.onmouseleave = function(e) { e.currentTarget.style.background = "transparent"; };
+                  
+                  var info = document.createElement("div");
+                  info.style.cssText = "flex:1;";
+                  info.innerHTML = "<div style='font-weight:bold; color:#dfd;'>" + entry.ip + ":" + entry.port + "</div><div style='font-size:11px; color:#aaa;'>Code: " + entry.code + "</div>";
+                  (function(ent) {
+                    info.onclick = function() {
+                      var ipEl = document.getElementById("mp-ip");
+                      var portEl = document.getElementById("mp-port");
+                      var codeEl = document.getElementById("mp-code");
+                      var passEl = document.getElementById("mp-pass");
+                      if(ipEl) ipEl.value = ent.ip;
+                      if(portEl) portEl.value = ent.port;
+                      if(codeEl) codeEl.value = ent.code;
+                      if(passEl && ent.pass) passEl.value = ent.pass;
+                    };
+                  })(entry);
+                  
+                  var delBtn = document.createElement("button");
+                  delBtn.innerHTML = "&times;";
+                  delBtn.style.cssText = "background:none; border:none; color:#e53935; font-size:18px; font-weight:bold; cursor:pointer; padding:0 5px;";
+                  (function(idx) {
+                    delBtn.onclick = function(e) {
+                      e.stopPropagation();
+                      var freshRaw = window.localStorage.getItem('mp_saved_servers');
+                      var fresh = freshRaw ? JSON.parse(freshRaw) : [];
+                      fresh.splice(idx, 1);
+                      window.localStorage.setItem('mp_saved_servers', JSON.stringify(fresh));
+                      renderSaved();
+                    };
+                  })(s);
+
+                  item.appendChild(info);
+                  item.appendChild(delBtn);
+                  listWrap.appendChild(item);
+                }
+              };
+              renderSaved();
+              dialog.appendChild(listWrap);
+            }
+          } catch(e) { console.error(e); }
+        }
+        
         var fields = [
           { label: "Server IP", id: "mp-ip", value: "localhost" },
           { label: "Port", id: "mp-port", value: "3005" },
@@ -719,6 +789,22 @@ class Mod extends shapez.Mod {
               var port = document.getElementById("mp-port").value || "3005";
               var serverUrl = "ws://" + ip + ":" + port;
               if (!code) return;
+
+              try {
+                var savedRaw = window.localStorage.getItem('mp_saved_servers');
+                var saved = savedRaw ? JSON.parse(savedRaw) : [];
+                var exists = false;
+                for (var s = 0; s < saved.length; s++) {
+                  if (saved[s].ip === ip && saved[s].port === port && saved[s].code === code) {
+                    exists = true; break;
+                  }
+                }
+                if (!exists) {
+                  saved.push({ ip: ip, port: port, code: code, pass: pass });
+                  window.localStorage.setItem('mp_saved_servers', JSON.stringify(saved));
+                }
+              } catch(e) { console.error(e); }
+
               self.network.connect(serverUrl).then(function() {
                 self.network.playerId = name;
                 self.network.isSpectator = spec;
