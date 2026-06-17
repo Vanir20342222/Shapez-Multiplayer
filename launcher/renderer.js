@@ -1,5 +1,3 @@
-const { ipcRenderer } = require('electron');
-
 const btnUpdate = document.getElementById('btn-update');
 const updateText = document.getElementById('update-text');
 const updateLoader = document.getElementById('update-loader');
@@ -21,22 +19,33 @@ async function init() {
   const ipContainer = document.getElementById('ip-display-container');
   
   try {
-    currentPublicIp = await ipcRenderer.invoke('get-public-ip');
+    currentPublicIp = await window.electronAPI.getPublicIp();
     ipEl.textContent = currentPublicIp;
   } catch(e) {
+    // M18: Set to 'Failed' so stale 'Unknown' is not copied
+    currentPublicIp = 'Failed';
     ipEl.textContent = 'Failed';
   }
 
   ipContainer.addEventListener('click', () => {
     if (currentPublicIp && currentPublicIp !== 'Unknown' && currentPublicIp !== 'Failed') {
-      navigator.clipboard.writeText(currentPublicIp);
-      const oldText = ipEl.textContent;
-      ipEl.textContent = 'Copied!';
-      ipEl.style.color = '#43a047';
-      setTimeout(() => {
-        ipEl.textContent = oldText;
-        ipEl.style.color = '#b39ddb';
-      }, 1500);
+      // M16: Error-handle clipboard write
+      navigator.clipboard.writeText(currentPublicIp).then(() => {
+        const oldText = ipEl.textContent;
+        ipEl.textContent = 'Copied!';
+        ipEl.style.color = '#43a047';
+        setTimeout(() => {
+          ipEl.textContent = oldText;
+          ipEl.style.color = '#b39ddb';
+        }, 1500);
+      }).catch(() => {
+        ipEl.textContent = 'Copy failed';
+        ipEl.style.color = 'var(--error)';
+        setTimeout(() => {
+          ipEl.textContent = currentPublicIp;
+          ipEl.style.color = '#b39ddb';
+        }, 1500);
+      });
     }
   });
 
@@ -49,14 +58,23 @@ window.addEventListener('DOMContentLoaded', init);
 // Mod Updater Logic
 // ---------------------
 async function refreshModStatus() {
-  const status = await ipcRenderer.invoke('check-mod-status');
-  if (status.installed) {
-    localVersionEl.textContent = status.version;
-    modStatusEl.textContent = 'Installed';
-    modStatusEl.className = 'status-badge active';
-  } else {
-    localVersionEl.textContent = 'Not Found';
-    modStatusEl.textContent = 'Missing';
+  // M17: Error handling for IPC call
+  try {
+    const status = await window.electronAPI.checkModStatus();
+    if (status.installed) {
+      localVersionEl.textContent = status.version;
+      modStatusEl.textContent = 'Installed';
+      modStatusEl.className = 'status-badge active';
+    } else {
+      localVersionEl.textContent = 'Not Found';
+      modStatusEl.textContent = 'Missing';
+      modStatusEl.className = 'status-badge';
+      modStatusEl.style.backgroundColor = 'rgba(239, 68, 68, 0.2)';
+      modStatusEl.style.color = 'var(--error)';
+    }
+  } catch (e) {
+    localVersionEl.textContent = 'Error';
+    modStatusEl.textContent = 'Error';
     modStatusEl.className = 'status-badge';
     modStatusEl.style.backgroundColor = 'rgba(239, 68, 68, 0.2)';
     modStatusEl.style.color = 'var(--error)';
@@ -69,7 +87,7 @@ btnUpdate.addEventListener('click', async () => {
   updateLoader.style.display = 'block';
 
   try {
-    await ipcRenderer.invoke('install-mod');
+    await window.electronAPI.installMod();
     await refreshModStatus();
     updateText.textContent = 'Update Successful!';
     btnUpdate.className = 'btn btn-primary';
@@ -85,6 +103,12 @@ btnUpdate.addEventListener('click', async () => {
     btnUpdate.className = 'btn btn-danger';
     btnUpdate.disabled = false;
     updateLoader.style.display = 'none';
+    // L5: Auto-reset error state after 5 seconds
+    setTimeout(() => {
+      updateText.textContent = 'Install / Update Mod';
+      btnUpdate.className = 'btn btn-primary';
+      btnUpdate.style.background = '';
+    }, 5000);
   }
   updateLoader.style.display = 'none';
 });
@@ -98,15 +122,19 @@ function appendLog(text, isError = false) {
   el.textContent = text.trim();
   serverLogs.appendChild(el);
   serverLogs.scrollTop = serverLogs.scrollHeight;
+  // M15: Cap log entries at 500
+  while (serverLogs.children.length > 500) {
+    serverLogs.removeChild(serverLogs.firstChild);
+  }
 }
 
 btnServer.addEventListener('click', async () => {
   if (isServerRunning) {
-      await ipcRenderer.invoke('stop-server');
+      await window.electronAPI.stopServer();
   } else {
       btnServer.disabled = true;
       btnServer.textContent = 'Starting...';
-      const res = await ipcRenderer.invoke('start-server');
+      const res = await window.electronAPI.startServer();
       if (!res.success) {
           appendLog(res.message, true);
           btnServer.disabled = false;
@@ -123,15 +151,15 @@ btnServer.addEventListener('click', async () => {
   }
 });
 
-ipcRenderer.on('server-log', (e, data) => {
+window.electronAPI.onServerLog((data) => {
     appendLog(data);
 });
 
-ipcRenderer.on('server-error', (e, data) => {
+window.electronAPI.onServerError((data) => {
     appendLog(data, true);
 });
 
-ipcRenderer.on('server-stopped', (e, code) => {
+window.electronAPI.onServerStopped((code) => {
     isServerRunning = false;
     btnServer.textContent = 'Start Server';
     btnServer.className = 'btn btn-primary';
@@ -139,6 +167,3 @@ ipcRenderer.on('server-stopped', (e, code) => {
     connectionStatus.classList.remove('active');
     appendLog(`[System] Server stopped with exit code ${code}`);
 });
-
-// Initialize
-refreshModStatus();

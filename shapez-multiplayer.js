@@ -1,13 +1,21 @@
 const METADATA = {
   id: "multiplayer",
   name: "Shapez.io Multiplayer",
-  version: "1.4.3",
+  version: "1.5.0",
   description: "Real-time cooperative multiplayer for shapez.io",
   author: "AI",
   website: "",
   minimumGameVersion: ">=1.5.0",
   doesNotAffectSavegame: false
 };
+
+function showNotification(msg) {
+  var el = document.createElement("div");
+  el.style.cssText = "position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.85);color:#fff;padding:16px 32px;border-radius:8px;z-index:999999;font-size:16px;font-family:sans-serif;pointer-events:none;";
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, 5000);
+}
 
 function calculateDelta(oldObj, newObj) {
   if (oldObj === newObj) return undefined;
@@ -30,14 +38,26 @@ function calculateDelta(oldObj, newObj) {
       }
     }
   }
+  for (var key in oldObj) {
+    if (oldObj.hasOwnProperty(key) && !newObj.hasOwnProperty(key)) {
+      diff[key] = "__DELETED__";
+      hasChanges = true;
+    }
+  }
   return hasChanges ? diff : undefined;
 }
 
 function applyDelta(target, delta) {
   if (typeof delta !== 'object' || delta === null || Array.isArray(delta)) return delta;
   for (var key in delta) {
-    if (typeof delta[key] === 'object' && delta[key] !== null && target.hasOwnProperty(key) && typeof target[key] === 'object') {
-      target[key] = applyDelta(target[key], delta[key]);
+    if (delta[key] === "__DELETED__") {
+      delete target[key];
+      continue;
+    }
+    if (Array.isArray(delta[key])) {
+      target[key] = delta[key];
+    } else if (typeof target[key] === 'object' && target[key] !== null && typeof delta[key] === 'object') {
+      applyDelta(target[key], delta[key]);
     } else {
       target[key] = delta[key];
     }
@@ -103,7 +123,7 @@ class Mod extends shapez.Mod {
               const game = games[index];
               const hostBtn = document.createElement("button");
               hostBtn.classList.add("styledButton", "mp-host-btn");
-              hostBtn.innerHTML = "Host MP";
+              hostBtn.textContent = "Host MP";
               hostBtn.style.backgroundColor = "#4a148c";
               hostBtn.style.color = "white";
               hostBtn.style.marginRight = "10px";
@@ -169,10 +189,10 @@ class Mod extends shapez.Mod {
                           a.click();
                           document.body.removeChild(a);
                           URL.revokeObjectURL(url);
-                          alert("File downloaded! Please replace your local mod file and restart the game.");
+                          showNotification("File downloaded! Please replace your local mod file and restart the game.");
                       }
                   } else {
-                      alert("You are on the latest version (" + currentVersion + ")!");
+                      showNotification("You are on the latest version (" + currentVersion + ")!");
                   }
               } else {
                   throw new Error("Could not parse version from online file.");
@@ -180,7 +200,7 @@ class Mod extends shapez.Mod {
           })
           .catch(function(err) {
               console.error("Update check failed:", err);
-              alert("Failed to check for updates: " + err.message);
+              showNotification("Failed to check for updates: " + err.message);
           })
           .finally(function() {
               btnEl.textContent = origText;
@@ -292,7 +312,7 @@ class Mod extends shapez.Mod {
                 net.connect(net.serverUrl).then(function() {
                   var rEl = document.getElementById("mp-reconnect");
                   if (rEl) rEl.remove();
-                  net.send("room_join", { code: net.roomCode });
+                  net.send("room_join", { code: net.roomCode, name: net.playerName, isSpectator: net.isSpectator });
                 }).catch(function() {
                   setTimeout(attemptReconnect, 3000);
                 });
@@ -338,7 +358,20 @@ class Mod extends shapez.Mod {
             var loadingOverlay = document.createElement("div");
             loadingOverlay.id = "mp-loading-overlay";
             loadingOverlay.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:#1a1c20;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999999;color:#b39ddb;font-family:inherit;";
-            loadingOverlay.innerHTML = "<div style='width:60px;height:60px;border:6px solid #333;border-top-color:#b39ddb;border-radius:50%;animation:mp-spin 1s linear infinite;margin-bottom:25px;'></div><h2 style='margin:0;letter-spacing:0.1em;text-transform:uppercase;'>Joining Room...</h2><p style='color:#aaa;margin-top:10px;'>Downloading game state</p><style>@keyframes mp-spin { to { transform: rotate(360deg); } }</style>";
+            var spinnerDiv = document.createElement("div");
+            spinnerDiv.style.cssText = "width:60px;height:60px;border:6px solid #333;border-top-color:#b39ddb;border-radius:50%;animation:mp-spin 1s linear infinite;margin-bottom:25px;";
+            loadingOverlay.appendChild(spinnerDiv);
+            var loadH2 = document.createElement("h2");
+            loadH2.style.cssText = "margin:0;letter-spacing:0.1em;text-transform:uppercase;";
+            loadH2.textContent = "Joining Room...";
+            loadingOverlay.appendChild(loadH2);
+            var loadP = document.createElement("p");
+            loadP.style.cssText = "color:#aaa;margin-top:10px;";
+            loadP.textContent = "Downloading game state";
+            loadingOverlay.appendChild(loadP);
+            var spinStyle = document.createElement("style");
+            spinStyle.textContent = "@keyframes mp-spin { to { transform: rotate(360deg); } }";
+            loadingOverlay.appendChild(spinStyle);
             document.body.appendChild(loadingOverlay);
             break;
 
@@ -425,8 +458,11 @@ class Mod extends shapez.Mod {
           case "upgrade_action":
             if (self.network.isHost && self.root) {
                 self.actions.isRemote = true;
-                self.root.hubGoals.tryUnlockUpgrade(payload.upgradeId);
-                self.actions.isRemote = false;
+                try {
+                    self.root.hubGoals.tryUnlockUpgrade(payload.upgradeId);
+                } finally {
+                    self.actions.isRemote = false;
+                }
             }
             break;
 
@@ -542,40 +578,66 @@ class Mod extends shapez.Mod {
               // Update status badge
               var statusEl = document.getElementById("mp-status");
               if (statusEl) {
-                statusEl.innerHTML = "ROOM: <b>" + self.network.roomCode + "</b> (Host)";
+                statusEl.textContent = "";
+                var roomLabel = document.createTextNode("ROOM: ");
+                statusEl.appendChild(roomLabel);
+                var roomBold = document.createElement("b");
+                roomBold.textContent = self.network.roomCode;
+                statusEl.appendChild(roomBold);
+                statusEl.appendChild(document.createTextNode(" (Host)"));
               }
               // Start sync loop
               if (self.syncInterval) clearInterval(self.syncInterval);
+              self._lastSyncObj = null;
               self.syncInterval = setInterval(function() {
                 if (!self.root || !self.root.entityMgr) return;
-                var stateSync = { hub: self.root.hubGoals.serialize() };
-                self.network.send("state_sync", stateSync);
+                var fullState = {
+                    hub: self.root.hubGoals.serialize(),
+                    map_hash: self.actions.totalEntitiesPlaced || 0,
+                    waypoints: self.root.hud.parts.waypoints.serialize(),
+                    pinnedShapes: self.root.hud.parts.pinnedShapes.serialize()
+                };
+                if (self._lastSyncObj) {
+                    var delta = calculateDelta(self._lastSyncObj, fullState);
+                    if (delta !== undefined) {
+                        self.network.send("state_sync_delta", { delta: delta });
+                    }
+                } else {
+                    self.network.send("state_sync", fullState);
+                }
+                self._lastSyncObj = JSON.parse(JSON.stringify(fullState));
               }, 500);
             } else if (payload.oldHostId === self.network.playerId) {
               self.network.isHost = false;
               if (self.syncInterval) clearInterval(self.syncInterval);
               var statusEl2 = document.getElementById("mp-status");
               if (statusEl2) {
-                statusEl2.innerHTML = "ROOM: <b>" + self.network.roomCode + "</b> (Guest)";
+                statusEl2.textContent = "";
+                var roomLabel2 = document.createTextNode("ROOM: ");
+                statusEl2.appendChild(roomLabel2);
+                var roomBold2 = document.createElement("b");
+                roomBold2.textContent = self.network.roomCode;
+                statusEl2.appendChild(roomBold2);
+                statusEl2.appendChild(document.createTextNode(" (Guest)"));
               }
             }
             break;
 
           case "kicked":
-            alert(payload.reason || "You have been kicked by the host.");
+            showNotification(payload.reason || "You have been kicked by the host.");
             shapez.GLOBAL_APP.stateMgr.moveToState("MainMenuState");
             break;
 
           case "player_left":
             this.players.delete(payload.id);
             if (payload.wasHost) {
-              alert("Host disconnected");
+              showNotification("Host disconnected");
               shapez.GLOBAL_APP.stateMgr.moveToState("MainMenuState");
             }
             break;
 
           case "error":
-            alert(payload.message);
+            showNotification(payload.message);
             break;
 
           case "pong":
@@ -617,7 +679,7 @@ class Mod extends shapez.Mod {
             listWrap.style.cssText = "max-height:120px; overflow-y:auto; margin-bottom:20px; border:1px solid #555; border-radius:4px; background:#2a2e35;";
             
             var renderSaved = function() {
-              listWrap.innerHTML = "";
+              while (listWrap.firstChild) listWrap.removeChild(listWrap.firstChild);
               var currentRaw = window.localStorage.getItem('mp_saved_servers');
               var currentSaved = currentRaw ? JSON.parse(currentRaw) : [];
               if (currentSaved.length === 0) {
@@ -636,7 +698,14 @@ class Mod extends shapez.Mod {
                   
                   var info = document.createElement("div");
                   info.style.cssText = "flex:1;";
-                  info.innerHTML = "<div style='font-weight:bold; color:#dfd;'>" + entry.ip + ":" + entry.port + "</div><div style='font-size:11px; color:#aaa;'>Code: " + entry.code + "</div>";
+                  var addrDiv = document.createElement("div");
+                  addrDiv.style.cssText = "font-weight:bold; color:#dfd;";
+                  addrDiv.textContent = entry.ip + ":" + entry.port;
+                  info.appendChild(addrDiv);
+                  var codeDiv = document.createElement("div");
+                  codeDiv.style.cssText = "font-size:11px; color:#aaa;";
+                  codeDiv.textContent = "Code: " + entry.code;
+                  info.appendChild(codeDiv);
                   (function(ent) {
                     info.onclick = function() {
                       var ipEl = document.getElementById("mp-ip");
@@ -651,7 +720,7 @@ class Mod extends shapez.Mod {
                   })(entry);
                   
                   var delBtn = document.createElement("button");
-                  delBtn.innerHTML = "&times;";
+                  delBtn.textContent = "\u00D7";
                   delBtn.style.cssText = "background:none; border:none; color:#e53935; font-size:18px; font-weight:bold; cursor:pointer; padding:0 5px;";
                   (function(idx) {
                     delBtn.onclick = function(e) {
@@ -772,7 +841,7 @@ class Mod extends shapez.Mod {
                 self.network.send("room_create", { password: pass, maxPlayers: max });
                 closeLobby();
               }).catch(function(e) {
-                alert("Failed to connect to " + serverUrl + "\nMake sure the server is running!");
+                showNotification("Failed to connect to " + serverUrl + ". Make sure the server is running!");
               });
             };
         }
@@ -806,11 +875,12 @@ class Mod extends shapez.Mod {
 
               self.network.connect(serverUrl).then(function() {
                 self.network.playerId = name;
+                self.network.playerName = name;
                 self.network.isSpectator = spec;
-                self.network.send("room_join", { code: code, password: pass, isSpectator: spec });
+                self.network.send("room_join", { code: code, password: pass, name: name, isSpectator: spec });
                 closeLobby();
               }).catch(function(e) {
-                alert("Failed to connect to " + serverUrl + "\nMake sure the server is running!");
+                showNotification("Failed to connect to " + serverUrl + ". Make sure the server is running!");
               });
             };
         }
@@ -822,7 +892,17 @@ class Mod extends shapez.Mod {
         var status = document.createElement("div");
         status.id = "mp-status";
         status.style.cssText = "position:fixed;top:10px;left:10px;background:rgba(0,0,0,0.7);color:#dfd;padding:5px 10px;font-family:monospace;z-index:9000;border-radius:4px;pointer-events:none;";
-        status.innerHTML = "ROOM: <b>" + code + "</b> (" + (isHost ? "Host" : "Guest") + ") <span id='mp-ping' style='color:#aaa;margin-left:8px;font-size:10px;'>...</span>";
+        var roomText = document.createTextNode("ROOM: ");
+        status.appendChild(roomText);
+        var codeBold = document.createElement("b");
+        codeBold.textContent = code;
+        status.appendChild(codeBold);
+        status.appendChild(document.createTextNode(" (" + (isHost ? "Host" : "Guest") + ") "));
+        var pingSpan = document.createElement("span");
+        pingSpan.id = "mp-ping";
+        pingSpan.style.cssText = "color:#aaa;margin-left:8px;font-size:10px;";
+        pingSpan.textContent = "...";
+        status.appendChild(pingSpan);
         document.body.appendChild(status);
       },
 
@@ -1025,7 +1105,87 @@ class Mod extends shapez.Mod {
 
       updatePlayerPanel: function() {
         if (self.playerPanelVisible) {
-          self.ui.showPlayerPanel();
+          var existingPanel = document.getElementById("mp-player-panel");
+          if (existingPanel) {
+            var listContainer = document.getElementById("mp-player-list");
+            if (listContainer) {
+              while (listContainer.firstChild) listContainer.removeChild(listContainer.firstChild);
+              for (var i = 0; i < self.playerList.length; i++) {
+                var p = self.playerList[i];
+                var row = document.createElement("div");
+                row.style.cssText = "display:flex; align-items:center; justify-content:space-between; padding:8px 14px; border-bottom:1px solid #333840;";
+                var info = document.createElement("div");
+                info.style.cssText = "display:flex; align-items:center; gap:8px;";
+                var dot = document.createElement("span");
+                dot.style.cssText = "width:8px; height:8px; border-radius:50%; background:" + (p.isHost ? "#b39ddb" : "#43a047") + "; display:inline-block; flex-shrink:0;";
+                info.appendChild(dot);
+                var nameEl = document.createElement("span");
+                nameEl.textContent = p.id;
+                nameEl.style.cssText = "font-size:13px;" + (p.id === self.network.playerId ? " font-weight:bold; color:#fff;" : " color:#ccc;");
+                info.appendChild(nameEl);
+                if (p.isSpectator) {
+                  var specBadge = document.createElement("span");
+                  specBadge.textContent = "SPECTATOR";
+                  specBadge.style.cssText = "font-size:9px; background:#455a64; color:#fff; padding:2px 5px; border-radius:3px; margin-left:4px;";
+                  info.appendChild(specBadge);
+                }
+                if (p.isHost) {
+                  var badge = document.createElement("span");
+                  badge.textContent = "HOST";
+                  badge.style.cssText = "font-size:9px; background:#4a148c; color:#fff; padding:2px 5px; border-radius:3px; margin-left:4px; font-weight:bold;";
+                  info.appendChild(badge);
+                }
+                if (p.id === self.network.playerId) {
+                  var youBadge = document.createElement("span");
+                  youBadge.textContent = "YOU";
+                  youBadge.style.cssText = "font-size:9px; background:#333; color:#aaa; padding:2px 5px; border-radius:3px; margin-left:4px;";
+                  info.appendChild(youBadge);
+                }
+                row.appendChild(info);
+                if (self.network.isHost && p.id !== self.network.playerId) {
+                  var actions = document.createElement("div");
+                  actions.style.cssText = "display:flex; gap:4px;";
+                  var transferBtn = document.createElement("button");
+                  transferBtn.textContent = "\u2B06";
+                  transferBtn.title = "Transfer host to " + p.id;
+                  transferBtn.style.cssText = "background:#1565c0; color:white; border:none; border-radius:3px; padding:3px 6px; cursor:pointer; font-size:11px; pointer-events:all;";
+                  (function(targetId) {
+                    transferBtn.onclick = function() {
+                      if (confirm("Transfer host to " + targetId + "?")) {
+                        self.network.send("transfer_host", { targetId: targetId });
+                      }
+                    };
+                  })(p.id);
+                  actions.appendChild(transferBtn);
+                  var kickBtn = document.createElement("button");
+                  kickBtn.textContent = "\u2716";
+                  kickBtn.title = "Kick " + p.id;
+                  kickBtn.style.cssText = "background:#c62828; color:white; border:none; border-radius:3px; padding:3px 6px; cursor:pointer; font-size:11px; pointer-events:all;";
+                  (function(targetId) {
+                    kickBtn.onclick = function() {
+                      if (confirm("Kick " + targetId + "?")) {
+                        self.network.send("kick_player", { targetId: targetId });
+                      }
+                    };
+                  })(p.id);
+                  actions.appendChild(kickBtn);
+                  row.appendChild(actions);
+                }
+                listContainer.appendChild(row);
+              }
+              if (self.playerList.length === 0) {
+                var empty = document.createElement("div");
+                empty.textContent = "No players connected";
+                empty.style.cssText = "padding:20px 14px; text-align:center; color:#666; font-size:13px;";
+                listContainer.appendChild(empty);
+              }
+            }
+            // Update title count
+            var titleEl = existingPanel.querySelector("span");
+            if (titleEl) titleEl.textContent = "Players (" + self.playerList.length + ")";
+          } else {
+            self.ui.showPlayerPanel();
+          }
         }
       },
 
@@ -1039,7 +1199,10 @@ class Mod extends shapez.Mod {
         if (log) {
             var msgEl = document.createElement("div");
             msgEl.style.cssText = "background:rgba(0,0,0,0.6); color:white; padding:4px 8px; border-radius:4px; font-size:13px; margin-bottom:4px; word-wrap:break-word; text-shadow:1px 1px 0 #000; animation: mpFadeOut 10s forwards;";
-            msgEl.innerHTML = "<b>" + sender + ":</b> " + text;
+            var nameEl = document.createElement("b");
+            nameEl.textContent = sender + ": ";
+            msgEl.appendChild(nameEl);
+            msgEl.appendChild(document.createTextNode(text));
             log.appendChild(msgEl);
             log.scrollTop = log.scrollHeight;
         }
@@ -1049,9 +1212,12 @@ class Mod extends shapez.Mod {
         var existing = document.getElementById("mp-hud-chat");
         if (existing) existing.remove();
         
-        var style = document.createElement("style");
-        style.textContent = "@keyframes mpFadeOut { 0% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }";
-        document.head.appendChild(style);
+        if (!document.getElementById("mp-chat-styles")) {
+          var style = document.createElement("style");
+          style.id = "mp-chat-styles";
+          style.textContent = "@keyframes mpFadeOut { 0% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }";
+          document.head.appendChild(style);
+        }
 
         var container = document.createElement("div");
         container.id = "mp-hud-chat";
@@ -1078,7 +1244,10 @@ class Mod extends shapez.Mod {
 
         var isTyping = false;
         
-        document.addEventListener("keydown", function(e) {
+        if (self._chatKeyHandler) {
+          document.removeEventListener("keydown", self._chatKeyHandler, true);
+        }
+        self._chatKeyHandler = function(e) {
             if (e.key === "Enter" && self.root) {
                 if (isTyping) {
                     var text = input.value.trim();
@@ -1104,7 +1273,8 @@ class Mod extends shapez.Mod {
             if (isTyping) {
                 e.stopPropagation();
             }
-        }, true);
+        };
+        document.addEventListener("keydown", self._chatKeyHandler, { capture: true });
 
         input.addEventListener("keyup", function(e) { if (isTyping) e.stopPropagation(); }, true);
         input.addEventListener("keypress", function(e) { if (isTyping) e.stopPropagation(); }, true);
@@ -1154,6 +1324,31 @@ class Mod extends shapez.Mod {
       isRemote: false,
       totalEntitiesPlaced: 0,
       setupHooks: function(root) {
+        // M9: Restore originals to prevent stacking of closures
+        if (root.logic.__mp_origTryPlace) {
+          root.logic.tryPlaceBuilding = root.logic.__mp_origTryPlace;
+        }
+        if (root.logic.__mp_origTryDelete) {
+          root.logic.tryDeleteBuilding = root.logic.__mp_origTryDelete;
+        }
+        if (root.hud.parts.waypoints.__mp_origAddWaypoint) {
+          root.hud.parts.waypoints.addWaypoint = root.hud.parts.waypoints.__mp_origAddWaypoint;
+        }
+        if (root.hud.parts.waypoints.__mp_origDeleteWaypoint) {
+          root.hud.parts.waypoints.deleteWaypoint = root.hud.parts.waypoints.__mp_origDeleteWaypoint;
+        }
+        if (root.hud.parts.waypoints.__mp_origRenameWaypoint) {
+          root.hud.parts.waypoints.renameWaypoint = root.hud.parts.waypoints.__mp_origRenameWaypoint;
+        }
+        if (root.hud.parts.pinnedShapes.__mp_origPinNewShape) {
+          root.hud.parts.pinnedShapes.pinNewShape = root.hud.parts.pinnedShapes.__mp_origPinNewShape;
+        }
+        if (root.hud.parts.pinnedShapes.__mp_origUnpinShape) {
+          root.hud.parts.pinnedShapes.unpinShape = root.hud.parts.pinnedShapes.__mp_origUnpinShape;
+        }
+
+        // M13: Clear any existing speed sync interval
+        if (self._speedSyncInterval) clearInterval(self._speedSyncInterval);
         if (!shapez.Blueprint.prototype.tryPlace.__mp_hooked) {
             var origBlueprintPlace = shapez.Blueprint.prototype.tryPlace;
             shapez.Blueprint.prototype.tryPlace = function (blueprintRoot, tile) {
@@ -1191,6 +1386,7 @@ class Mod extends shapez.Mod {
         }
 
         var origPlace = root.logic.tryPlaceBuilding;
+        root.logic.__mp_origTryPlace = origPlace;
         root.logic.tryPlaceBuilding = function (params) {
           var res = origPlace.apply(this, arguments);
           if (res) {
@@ -1206,12 +1402,13 @@ class Mod extends shapez.Mod {
                 }
               });
             }
-            self.actions.totalEntitiesPlaced++;
+            if (!self.actions.isRemote) self.actions.totalEntitiesPlaced++;
           }
           return res;
         };
 
         var origDelete = root.logic.tryDeleteBuilding;
+        root.logic.__mp_origTryDelete = origDelete;
         root.logic.tryDeleteBuilding = function (entity) {
           var res = origDelete.apply(this, arguments);
           if (res) {
@@ -1220,49 +1417,59 @@ class Mod extends shapez.Mod {
               var layer = entity.components.StaticMapEntity.getMetaBuilding().getLayer() || "regular";
               self.network.actionQueue.push({ type: "delete", payload: { x: origin.x, y: origin.y, layer: layer } });
             }
-            self.actions.totalEntitiesPlaced--;
+            if (!self.actions.isRemote) self.actions.totalEntitiesPlaced--;
           }
           return res;
         };
 
         // Hooks for Waypoints
         var origAddWaypoint = root.hud.parts.waypoints.addWaypoint;
+        root.hud.parts.waypoints.__mp_origAddWaypoint = origAddWaypoint;
         root.hud.parts.waypoints.addWaypoint = function(label, position) {
             if (!self.network.isHost && !self.actions.isRemote) {
                 self.network.send("waypoint_action", { type: "add", label: label, x: position.x, y: position.y });
+                return;
             }
             return origAddWaypoint.apply(this, arguments);
         };
 
         var origDeleteWaypoint = root.hud.parts.waypoints.deleteWaypoint;
+        root.hud.parts.waypoints.__mp_origDeleteWaypoint = origDeleteWaypoint;
         root.hud.parts.waypoints.deleteWaypoint = function(waypoint) {
             if (!self.network.isHost && !self.actions.isRemote) {
                 self.network.send("waypoint_action", { type: "delete", label: waypoint.label, x: waypoint.center.x, y: waypoint.center.y });
+                return;
             }
             return origDeleteWaypoint.apply(this, arguments);
         };
 
         var origRenameWaypoint = root.hud.parts.waypoints.renameWaypoint;
+        root.hud.parts.waypoints.__mp_origRenameWaypoint = origRenameWaypoint;
         root.hud.parts.waypoints.renameWaypoint = function(waypoint, newLabel) {
             if (!self.network.isHost && !self.actions.isRemote) {
                 self.network.send("waypoint_action", { type: "rename", label: waypoint.label, newLabel: newLabel, x: waypoint.center.x, y: waypoint.center.y });
+                return;
             }
             return origRenameWaypoint.apply(this, arguments);
         };
 
         // Hooks for Pinned Shapes
         var origPinShape = root.hud.parts.pinnedShapes.pinNewShape;
+        root.hud.parts.pinnedShapes.__mp_origPinNewShape = origPinShape;
         root.hud.parts.pinnedShapes.pinNewShape = function(definition) {
             if (!self.network.isHost && !self.actions.isRemote) {
                 self.network.send("pinned_action", { type: "pin", key: definition.getHash() });
+                return;
             }
             return origPinShape.apply(this, arguments);
         };
 
         var origUnpinShape = root.hud.parts.pinnedShapes.unpinShape;
+        root.hud.parts.pinnedShapes.__mp_origUnpinShape = origUnpinShape;
         root.hud.parts.pinnedShapes.unpinShape = function(key) {
             if (!self.network.isHost && !self.actions.isRemote) {
                 self.network.send("pinned_action", { type: "unpin", key: key });
+                return;
             }
             return origUnpinShape.apply(this, arguments);
         };
@@ -1331,27 +1538,31 @@ class Mod extends shapez.Mod {
         }
         
         // Speed Control Mod Compatibility
-        self._speedSyncInterval = setInterval(function() {
-            if (!self.network) return;
-            var speedInput = document.getElementById("speed");
-            var pauseImg = document.getElementById("pause-image");
-            
-            if (self.network.isHost) {
-                if (!speedInput) return;
-                var state = {
-                    speed: speedInput.value,
-                    paused: pauseImg ? pauseImg.src.indexOf("play") !== -1 : false
-                };
-                if (JSON.stringify(state) !== JSON.stringify(self.lastSpeedState)) {
-                    self.lastSpeedState = state;
-                    self.network.send("speed_control", state);
-                }
-            } else {
-                if (speedInput) speedInput.style.pointerEvents = "none";
-                var pauseBtn = document.getElementById("pause-button");
-                if (pauseBtn) pauseBtn.style.pointerEvents = "none";
-            }
-        }, 200);
+        var speedEl = document.getElementById("speed");
+        var pauseEl = document.getElementById("pause-image");
+        if (speedEl && pauseEl) {
+          self._speedSyncInterval = setInterval(function() {
+              if (!self.network) return;
+              var speedInput = document.getElementById("speed");
+              var pauseImg = document.getElementById("pause-image");
+              
+              if (self.network.isHost) {
+                  if (!speedInput) return;
+                  var state = {
+                      speed: speedInput.value,
+                      paused: pauseImg ? pauseImg.src.indexOf("play") !== -1 : false
+                  };
+                  if (JSON.stringify(state) !== JSON.stringify(self.lastSpeedState)) {
+                      self.lastSpeedState = state;
+                      self.network.send("speed_control", state);
+                  }
+              } else {
+                  if (speedInput) speedInput.style.pointerEvents = "none";
+                  var pauseBtn = document.getElementById("pause-button");
+                  if (pauseBtn) pauseBtn.style.pointerEvents = "none";
+              }
+          }, 200);
+        }
       },
 
       handleRemote: function(action, from) {
@@ -1430,6 +1641,7 @@ class CursorOverlay extends shapez.BaseHUDPart {
   }
   update() {
     if (!this.mod) return;
+    if (!this.mod.network.ws || this.mod.network.ws.readyState !== 1) return;
     if (this.root.app.tickCount % 6 === 0) {
       var mousePos = this.root.app.mousePosition;
       if (mousePos) {

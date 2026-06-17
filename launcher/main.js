@@ -43,7 +43,7 @@ function broadcastPlayerList(room) {
 }
 
 function logToUI(msg, isError = false) {
-  if (mainWindow) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(isError ? 'server-error' : 'server-log', msg);
   }
 }
@@ -57,8 +57,9 @@ function createWindow() {
     height: 600,
     backgroundColor: '#0f172a',
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js')
     },
     autoHideMenuBar: true,
     show: false
@@ -67,6 +68,10 @@ function createWindow() {
   mainWindow.loadFile('index.html');
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
+  });
+
+  mainWindow.on('closed', () => {
+    mainWindow = null;
   });
 }
 
@@ -109,6 +114,7 @@ ipcMain.handle('install-mod', async () => {
   return new Promise((resolve, reject) => {
     https.get(repoUrl, (res) => {
       if (res.statusCode !== 200) {
+        res.resume();
         reject(new Error(`Failed to download: ${res.statusCode}`));
         return;
       }
@@ -128,7 +134,8 @@ ipcMain.handle('install-mod', async () => {
 
 function getModsPath() {
   if (process.platform === 'win32') {
-    return path.join(process.env.APPDATA, 'shapez.io', 'mods');
+    var appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
+    return path.join(appData, 'shapez.io', 'mods');
   } else if (process.platform === 'darwin') {
     return path.join(os.homedir(), 'Library', 'Application Support', 'shapez.io', 'mods');
   } else {
@@ -165,7 +172,7 @@ ipcMain.handle('start-server', async () => {
 
   try {
     const port = 3005;
-    wss = new WebSocketServer({ port, host: '0.0.0.0' });
+    wss = new WebSocketServer({ port, host: '0.0.0.0', maxPayload: 5 * 1024 * 1024 });
 
     wss.on('listening', () => {
       logToUI(`Relay server listening on ws://0.0.0.0:${port}`);
@@ -202,6 +209,10 @@ ipcMain.handle('start-server', async () => {
           room.clients.forEach((client) => {
             if (client.readyState === WebSocket.OPEN) client.send(closeMsg);
           });
+          room.clients.forEach(client => {
+            socketInfo.delete(client);
+            if (client.readyState === WebSocket.OPEN) client.close();
+          });
           rooms.delete(info.room);
           logToUI(`Room ${info.room} closed because host ${info.id} disconnected.`);
         } else {
@@ -226,6 +237,9 @@ ipcMain.handle('start-server', async () => {
 
 ipcMain.handle('stop-server', async () => {
     if (wss) {
+        wss.clients.forEach(client => {
+          if (client.readyState === WebSocket.OPEN) client.close();
+        });
         wss.close();
         wss = null;
         rooms.clear();
@@ -241,6 +255,10 @@ ipcMain.handle('stop-server', async () => {
 // MESSAGE HANDLING
 // =====================
 function handleMessage(ws, message) {
+  // H12: Override 'from' field with server-assigned ID to prevent spoofing
+  var senderInfo = socketInfo.get(ws);
+  if (senderInfo) message.from = senderInfo.id;
+
   const { type, payload, from } = message;
 
   switch (type) {
@@ -250,10 +268,20 @@ function handleMessage(ws, message) {
     }
 
     case "room_create": {
-      const code = generateRoomCode();
+      // H5: Prevent duplicate room/join
+      if (socketInfo.has(ws)) {
+        ws.send(JSON.stringify({ type: 'error', message: 'Already in a room' }));
+        return;
+      }
+      // H6: Avoid room code collision
+      var code = generateRoomCode();
+      while (rooms.has(code)) { code = generateRoomCode(); }
       const id = from || "Host";
       const password = payload.password || "";
-      const maxPlayers = payload.maxPlayers ? parseInt(payload.maxPlayers) : 10;
+      // H7: parseInt with radix + NaN/bounds validation
+      var maxPlayers = parseInt(payload.maxPlayers, 10);
+      if (isNaN(maxPlayers) || maxPlayers < 2) maxPlayers = 10;
+      if (maxPlayers > 100) maxPlayers = 100;
       
       rooms.set(code, { code, host: ws, clients: new Set(), password, maxPlayers });
       socketInfo.set(ws, { room: code, id, isHost: true, color: "#b39ddb", isSpectator: false });
@@ -263,6 +291,11 @@ function handleMessage(ws, message) {
     }
 
     case "room_join": {
+      // H5: Prevent duplicate room/join
+      if (socketInfo.has(ws)) {
+        ws.send(JSON.stringify({ type: 'error', message: 'Already in a room' }));
+        return;
+      }
       const { code, password, isSpectator } = payload;
       const room = rooms.get(code);
       if (!room) {
@@ -280,6 +313,13 @@ function handleMessage(ws, message) {
         return;
       }
 
+      // M4: Null reference check for host info
+      const hostInfo = socketInfo.get(room.host);
+      if (!hostInfo) {
+        ws.send(JSON.stringify({ type: 'error', message: 'Host info unavailable' }));
+        return;
+      }
+
       const id = from || "Player_" + Math.floor(Math.random() * 1000);
       const color = getRandomColor();
       
@@ -287,7 +327,10 @@ function handleMessage(ws, message) {
       socketInfo.set(ws, { room: code, id, isHost: false, color, isSpectator: !!isSpectator });
 
       const joinMsg = JSON.stringify({ type: "player_joined", payload: { id, code, color, isSpectator: !!isSpectator } });
-      room.host.send(joinMsg);
+      // C6: readyState guard before host.send
+      if (room.host.readyState === WebSocket.OPEN) {
+        room.host.send(joinMsg);
+      }
       room.clients.forEach((client) => {
         if (client !== ws && client.readyState === WebSocket.OPEN) client.send(joinMsg);
       });
@@ -297,7 +340,7 @@ function handleMessage(ws, message) {
         payload: {
           code,
           id,
-          players: [socketInfo.get(room.host).id, ...Array.from(room.clients).map(c => socketInfo.get(c).id)],
+          players: [hostInfo.id, ...Array.from(room.clients).map(c => socketInfo.get(c).id)],
         },
       }));
       broadcastPlayerList(room);
@@ -453,8 +496,21 @@ function handleMessage(ws, message) {
       break;
     }
 
-    default:
-      // Unknown message
+    default: {
+      // H8: Relay unknown message types instead of silently dropping
+      const info = socketInfo.get(ws);
+      if (!info) return;
+      const room = rooms.get(info.room);
+      if (!room) return;
+      const serialized = JSON.stringify(message);
+      if (info.isHost) {
+        room.clients.forEach(c => {
+          if (c.readyState === WebSocket.OPEN) c.send(serialized);
+        });
+      } else {
+        if (room.host.readyState === WebSocket.OPEN) room.host.send(serialized);
+      }
       break;
+    }
   }
 }

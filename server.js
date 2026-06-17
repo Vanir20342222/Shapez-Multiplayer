@@ -1,3 +1,9 @@
+// ============================================================
+// DEPRECATED — This standalone server is no longer used.
+// The relay server logic has been moved into launcher/main.js.
+// This file is kept for reference only.
+// ============================================================
+
 const { WebSocketServer, WebSocket } = require("ws");
 
 const port = process.env.PORT || 3005;
