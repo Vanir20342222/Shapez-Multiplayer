@@ -55,9 +55,9 @@ If router configuration is unavailable, utilize a tunneling service:
 
 ### Hosting a Session
 1. Start the server via the Multiplayer Launcher.
-2. Launch shapez.io and load a save file.
-3. Press `Esc` and select **Host Multiplayer**.
-4. Enter your connection details. If the Launcher is running on your machine, use `localhost` and port `3005`.
+2. Launch shapez.io.
+3. Press "Host MP" under the save file that you wish to host.
+4. Enter your connection details. If the Launcher is running on your machine, use `localhost` and port `3005`. If not enter the servers's Public IP, VPN IP, or Tunnel URL.
 5. Configure a password and player limit if desired, then click **Host Game**.
 6. Distribute the generated 6-character Room Code to your guests.
 
