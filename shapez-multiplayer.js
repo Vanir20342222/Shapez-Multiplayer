@@ -1,7 +1,7 @@
 const METADATA = {
   id: "multiplayer",
   name: "Shapez.io Multiplayer",
-  version: "1.4.0",
+  version: "1.4.1",
   description: "Real-time cooperative multiplayer for shapez.io",
   author: "AI",
   website: "",
@@ -1481,8 +1481,8 @@ class CursorOverlay extends shapez.BaseHUDPart {
           }
       }
 
-      var w = context.canvas.width;
-      var h = context.canvas.height;
+      var w = window.innerWidth;
+      var h = window.innerHeight;
       var isOffscreen = screenPos.x < 0 || screenPos.x > w || screenPos.y < 0 || screenPos.y > h;
 
       if (isOffscreen) {
