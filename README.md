@@ -33,20 +33,7 @@ The easiest way to install and manage the multiplayer mod is using the **Shapez 
 
 ---
 
-## 🖥️ 2. Setting up the Server (Manual Method)
-
-If you prefer not to use the automated Launcher, you can run the server manually. **Only one person needs to run the server.**
-
-1. Download and install [Node.js](https://nodejs.org/).
-2. Download `server.js`, `package.json`, and `package-lock.json` from this repository into an empty folder.
-3. Open a terminal/command prompt in that folder.
-4. Run `npm install` to install the required dependencies.
-5. Run `node server.js`.
-6. You should see: `Relay server listening on ws://0.0.0.0:3005`. Leave this terminal open!
-
----
-
-## 🌍 3. Playing with Friends (Port Forwarding)
+## 🌍 2. Playing with Friends (Port Forwarding)
 
 If you are just playing on the same computer or local Wi-Fi, you can use `localhost` or your local IP address (e.g., `192.168.1.50`). However, to play with friends over the internet, the person running the server must **Port Forward** port `3005`.
 
@@ -64,7 +51,7 @@ If you cannot port forward, you can use a tunneling service:
 
 ---
 
-## 🎮 4. How to Play
+## 🎮 3. How to Play
 
 ### Hosting a Game
 1. Launch the game and load into a save file.
