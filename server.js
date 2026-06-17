@@ -248,9 +248,23 @@ function handleMessage(ws, message) {
       if (!room) return;
       
       const chatMsg = JSON.stringify(message);
-      if (room.host.readyState === WebSocket.OPEN) room.host.send(chatMsg);
+      if (room.host.readyState === WebSocket.OPEN && room.host !== ws) room.host.send(chatMsg);
       room.clients.forEach(c => {
-        if (c.readyState === WebSocket.OPEN) c.send(chatMsg);
+        if (c.readyState === WebSocket.OPEN && c !== ws) c.send(chatMsg);
+      });
+      break;
+    }
+
+    case "cursor": {
+      const info = socketInfo.get(ws);
+      if (!info) return;
+      const room = rooms.get(info.room);
+      if (!room) return;
+      
+      const cursorMsg = JSON.stringify(message);
+      if (room.host.readyState === WebSocket.OPEN && room.host !== ws) room.host.send(cursorMsg);
+      room.clients.forEach(c => {
+        if (c.readyState === WebSocket.OPEN && c !== ws) c.send(cursorMsg);
       });
       break;
     }
