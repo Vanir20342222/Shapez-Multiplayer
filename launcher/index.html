@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shapez Multiplayer Launcher</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <div class="header">
+    <h1>Shapez Multiplayer</h1>
+    <div id="connection-status" class="status-badge">App Ready</div>
+  </div>
+
+  <div class="content">
+    
+    <!-- Updater Panel -->
+    <div class="panel">
+      <h2>
+        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+        Mod Updater
+      </h2>
+      <p class="info-text">
+        Keep your multiplayer mod up to date. The launcher automatically installs it directly into your OS mod directory.
+      </p>
+      
+      <div style="margin-bottom: 20px;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+          <span style="color:var(--text-secondary); font-size:14px;">Local Version:</span>
+          <strong id="local-version">Checking...</strong>
+        </div>
+        <div style="display:flex; justify-content:space-between;">
+          <span style="color:var(--text-secondary); font-size:14px;">Status:</span>
+          <span id="mod-status" class="status-badge">Checking...</span>
+        </div>
+      </div>
+
+      <button id="btn-update" class="btn btn-primary">
+        <div class="loader" id="update-loader"></div>
+        <span id="update-text">Install / Update Mod</span>
+      </button>
+    </div>
+
+    <!-- Server Manager Panel -->
+    <div class="panel" style="flex: 1.5;">
+      <h2>
+        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"></path></svg>
+        Local Server Manager
+      </h2>
+      <p class="info-text">
+        Host a multiplayer room directly from your PC. Friends can join you once the server is running.
+      </p>
+
+      <button id="btn-server" class="btn btn-primary" style="margin-bottom: 16px;">
+        Start Server
+      </button>
+
+      <div class="log-container" id="server-logs">
+        <div class="log-entry" style="color:var(--text-secondary)">[System] Server stopped. Ready to launch.</div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

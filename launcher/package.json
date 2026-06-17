@@ -1,0 +1,31 @@
+{
+  "name": "shapez-multiplayer-launcher",
+  "version": "1.0.0",
+  "description": "Launcher and Server Manager for Shapez Multiplayer",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-builder --win",
+    "build:linux": "electron-builder --linux"
+  },
+  "build": {
+    "appId": "com.vanir.shapezmp",
+    "productName": "Shapez Multiplayer Launcher",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "Game"
+    }
+  },
+  "author": "Vanir",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^31.7.7",
+    "electron-builder": "^24.13.3"
+  }
+}

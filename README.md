@@ -19,29 +19,28 @@ Share a single factory map with friends, place buildings together, and deliver s
 
 ---
 
-## 🚀 1. Installing the Mod
+## 🚀 1. Installing the Mod & Server
 
-To play multiplayer, you must install the mod file into your shapez.io game.
+The easiest way to install and manage the multiplayer mod is using the **Shapez Multiplayer Launcher**.
 
-1. Download the `shapez-multiplayer.js` file from this repository.
-2. Open your shapez.io game and navigate to **Settings** -> **Mods**.
-3. Click **Open Mods Folder**.
-4. Drag and drop the `shapez-multiplayer.js` file into the folder.
-5. Restart shapez.io. You should now see "Multiplayer" options in the main menu!
+1. Download the latest `shapez-multiplayer-launcher` from this repository's `launcher` folder.
+2. Launch the application.
+3. Click **Install / Update Mod**. The launcher will automatically find your game files and inject the absolute latest version of the multiplayer mod directly into your `mods` folder!
+4. To host a game, simply click **Start Server** right inside the launcher window.
 
 > [!CAUTION]
 > **Important Note on Other Mods:** All players joining a lobby **MUST** have the exact same mods installed in their mods folder as the host. If the host has other mods (like `usage_statistics.js`) and you do not, your game will crash when trying to sync the factory!
 
 ---
 
-## 🖥️ 2. Setting up the Server
+## 🖥️ 2. Setting up the Server (Manual Method)
 
-Because shapez.io runs in a browser/Electron wrapper, a central relay server is required to bounce messages between players. **Only one person needs to run the server.**
+If you prefer not to use the automated Launcher, you can run the server manually. **Only one person needs to run the server.**
 
 1. Download and install [Node.js](https://nodejs.org/).
 2. Download `server.js`, `package.json`, and `package-lock.json` from this repository into an empty folder.
 3. Open a terminal/command prompt in that folder.
-4. Run `npm install` to install the required `ws` dependency.
+4. Run `npm install` to install the required dependencies.
 5. Run `node server.js`.
 6. You should see: `Relay server listening on ws://0.0.0.0:3005`. Leave this terminal open!
 
