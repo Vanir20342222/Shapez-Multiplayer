@@ -20,7 +20,12 @@
     "linux": {
       "target": "AppImage",
       "category": "Game"
-    }
+    },
+    "publish": [{
+      "provider": "github",
+      "owner": "Vanir20342222",
+      "repo": "Shapez-Multiplayer"
+    }]
   },
   "author": "Vanir",
   "license": "ISC",
@@ -29,6 +34,7 @@
     "electron-builder": "^24.13.3"
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "ws": "^8.21.0"
   }
 }

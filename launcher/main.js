@@ -1,4 +1,5 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
@@ -77,7 +78,30 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  createWindow();
+
+  autoUpdater.on('update-available', () => {
+    if (mainWindow) mainWindow.webContents.send('updater-event', 'update-available', null);
+  });
+  autoUpdater.on('download-progress', (progressObj) => {
+    if (mainWindow) mainWindow.webContents.send('updater-event', 'download-progress', progressObj.percent);
+  });
+  autoUpdater.on('update-downloaded', () => {
+    if (mainWindow) mainWindow.webContents.send('updater-event', 'update-downloaded', null);
+  });
+  autoUpdater.on('error', (err) => {
+    if (mainWindow) mainWindow.webContents.send('updater-event', 'error', err == null ? "unknown" : err.message);
+  });
+
+  autoUpdater.checkForUpdatesAndNotify().catch(err => {
+    console.error("Failed to check for updates:", err);
+  });
+});
+
+ipcMain.on('install-update', () => {
+  autoUpdater.quitAndInstall();
+});
 
 app.on('window-all-closed', () => {
   if (wss) {

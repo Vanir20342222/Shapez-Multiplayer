@@ -21,4 +21,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('server-stopped', fn);
     return () => ipcRenderer.removeListener('server-stopped', fn);
   },
+  installUpdate: () => ipcRenderer.send('install-update'),
+  onUpdaterEvent: (callback) => {
+    const fn = (_event, type, payload) => callback(type, payload);
+    ipcRenderer.on('updater-event', fn);
+    return () => ipcRenderer.removeListener('updater-event', fn);
+  }
 });
