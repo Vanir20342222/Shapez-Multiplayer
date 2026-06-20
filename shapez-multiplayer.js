@@ -1,7 +1,7 @@
 const METADATA = {
   id: "multiplayer",
   name: "Multiplayer Mod",
-  version: "1.5.5",
+  version: "1.5.6",
   description: "A host-authority multiplayer mod for Shapez.io. Connect via the external launcher.",
   author: "Vanir",
   website: "https://shapez.io",
@@ -138,8 +138,16 @@ class Mod extends shapez.Mod {
       renderSavegames() {
         $old.renderSavegames.apply(this, arguments);
         setTimeout(() => {
+          const els = document.querySelectorAll(".game");
+          els.forEach(el => {
+            const data = el.getAttribute("data-id");
+            if (data && data.startsWith("mp_guest_")) {
+              el.style.display = "none";
+            }
+          });
           const savegameElements = this.htmlElement.querySelectorAll('.savegame');
           const games = this.savedGames;
+
           if (savegameElements.length === games.length) {
             savegameElements.forEach((elem, index) => {
               if (elem.querySelector('.mp-host-btn')) return;
@@ -164,6 +172,44 @@ class Mod extends shapez.Mod {
             });
           }
         }, 10);
+      }
+    }));
+
+    this.modInterface.extendClass(shapez.GameCore, ({ $super, $old }) => ({
+      updateLogic() {
+        if (!this.root || !this.root.time) return $old.updateLogic.apply(this, arguments);
+        if (this.root.time.tickCount === undefined) this.root.time.tickCount = 0;
+        
+        var isGuest = self.network && self.network.ws && self.network.ws.readyState === 1 && !self.network.isHost;
+        
+        if (isGuest) {
+            // Apply speed commands scheduled for this tick
+            if (self.pendingSpeedCommands && self.pendingSpeedCommands.length > 0) {
+                var cmd = self.pendingSpeedCommands[0];
+                if (this.root.time.tickCount >= cmd.hostTick) {
+                    self.lastReceivedSpeedState = cmd;
+                    var speedInput = document.getElementById("speed");
+                    var pauseImg = document.getElementById("pause-image");
+                    var pauseBtn = document.getElementById("pause-button");
+                    
+                    if (speedInput && speedInput.value !== cmd.speed) {
+                        speedInput.value = cmd.speed;
+                        speedInput.dispatchEvent(new Event("input"));
+                        speedInput.dispatchEvent(new Event("change"));
+                    }
+                    if (pauseImg && pauseBtn) {
+                        var isPaused = pauseImg.src.indexOf("play") !== -1;
+                        if (isPaused !== cmd.paused) {
+                            pauseBtn.click();
+                        }
+                    }
+                    self.pendingSpeedCommands.shift();
+                }
+            }
+        }
+        
+        $old.updateLogic.apply(this, arguments);
+        this.root.time.tickCount++;
       }
     }));
 
@@ -247,12 +293,27 @@ class Mod extends shapez.Mod {
     if (this.network.isHost) {
       this.ui.showRoomStatus(this.network.roomCode, true);
       this.syncInterval = setInterval(function() {
-        if (!self.root || !self.root.entityMgr) return;
+        var beltPaths = {};
+        if (self.root.systemMgr.systems.belt && self.root.systemMgr.systems.belt.beltPaths) {
+            var paths = self.root.systemMgr.systems.belt.beltPaths;
+            for (var i = 0; i < paths.length; i++) {
+                var bp = paths[i];
+                var uids = bp.entityPath.map(e => e.uid).join(",");
+                var itemsStr = bp.items.map(it => it[0].toFixed(3) + "|" + (it[1].getItemType ? it[1].getItemType() : it[1].getId()) + "|" + (it[1].data || "")).join(";");
+                beltPaths[uids] = {
+                    s: bp.spacingToFirstItem,
+                    i: itemsStr
+                };
+            }
+        }
+
         var fullState = {
+            tickCount: self.root.time ? self.root.time.tickCount : 0,
             hub: self.root.hubGoals.serialize(),
             map_hash: self.actions.totalEntitiesPlaced || 0,
             waypoints: self.root.hud.parts.waypoints.serialize(),
-            pinnedShapes: self.root.hud.parts.pinnedShapes.serialize()
+            pinnedShapes: self.root.hud.parts.pinnedShapes.serialize(),
+            belts: beltPaths
         };
         if (self._lastSyncObj) {
             var delta = calculateDelta(self._lastSyncObj, fullState);
@@ -541,6 +602,7 @@ class Mod extends shapez.Mod {
 
           case "state_sync":
             if (!self.network.isHost && self.root) {
+              if (payload.tickCount !== undefined) self.hostTargetTick = payload.tickCount;
               if (payload.map_hash !== undefined && payload.map_hash !== self.actions.totalEntitiesPlaced) {
                   self.network.send("request_snapshot", {});
                   self.actions.totalEntitiesPlaced = payload.map_hash;
@@ -553,6 +615,7 @@ class Mod extends shapez.Mod {
           case "state_sync_delta":
             if (!self.network.isHost && self.root && self._lastSyncObj) {
                 applyDelta(self._lastSyncObj, payload.delta);
+                if (self._lastSyncObj.tickCount !== undefined) self.hostTargetTick = self._lastSyncObj.tickCount;
                 if (self._lastSyncObj.map_hash !== undefined && self._lastSyncObj.map_hash !== self.actions.totalEntitiesPlaced) {
                     self.network.send("request_snapshot", {});
                     self.actions.totalEntitiesPlaced = self._lastSyncObj.map_hash;
@@ -591,7 +654,9 @@ class Mod extends shapez.Mod {
           case "speed_control":
             var isGuest = self.network && self.network.ws && self.network.ws.readyState === 1 && !self.network.isHost;
             if (isGuest) {
-                self.lastReceivedSpeedState = payload;
+                if (!self.pendingSpeedCommands) self.pendingSpeedCommands = [];
+                self.pendingSpeedCommands.push(payload);
+                self.pendingSpeedCommands.sort((a,b) => a.hostTick - b.hostTick);
             }
             break;
 
@@ -1362,7 +1427,19 @@ class Mod extends shapez.Mod {
   setupSync() {
     return {
       createSnapshot: function(root) {
-        root.savegame.updateData(root);
+        if (shapez.SavegameSerializer) {
+            var serializer = new shapez.SavegameSerializer();
+            return serializer.generateDumpFromGameRoot(root, false);
+        }
+        try {
+            var readerClass = root.savegame.constructor.getReaderClass();
+            var oldValidate = readerClass.prototype.validate;
+            readerClass.prototype.validate = function() { return true; };
+            root.savegame.updateData(root);
+            readerClass.prototype.validate = oldValidate;
+        } catch(e) {
+            root.savegame.updateData(root);
+        }
         return root.savegame.getCurrentDump();
       },
       applyState: function(root, state) {
@@ -1397,6 +1474,30 @@ class Mod extends shapez.Mod {
               if (oldPs !== newPs) {
                   root.hud.parts.pinnedShapes.deserialize(state.pinnedShapes);
                   root.hud.parts.pinnedShapes.rerenderFull();
+              }
+          if (state.belts && root.systemMgr.systems.belt) {
+              var paths = root.systemMgr.systems.belt.beltPaths;
+              for (var i = 0; i < paths.length; i++) {
+                  var bp = paths[i];
+                  var uids = bp.entityPath.map(e => e.uid).join(",");
+                  if (state.belts[uids]) {
+                      var data = state.belts[uids];
+                      bp.spacingToFirstItem = data.s;
+                      var newItems = [];
+                      if (data.i) {
+                          var parts = data.i.split(";");
+                          for (var j = 0; j < parts.length; j++) {
+                              var p = parts[j].split("|");
+                              var dist = parseFloat(p[0]);
+                              var type = p[1];
+                              var itData = p[2] || undefined;
+                              var resolved = shapez.itemResolverSingleton(root, { $: type, data: itData });
+                              if (resolved) newItems.push([dist, resolved]);
+                          }
+                      }
+                      bp.items = newItems;
+                      bp.numCompressedItemsAfterFirstItem = 0;
+                  }
               }
           }
       }
@@ -1655,7 +1756,8 @@ class Mod extends shapez.Mod {
                     if (!speedInput) return;
                     var state = {
                         speed: speedInput.value,
-                        paused: pauseImg ? pauseImg.src.indexOf("play") !== -1 : false
+                        paused: pauseImg ? pauseImg.src.indexOf("play") !== -1 : false,
+                        hostTick: (self.root && self.root.time) ? self.root.time.tickCount : 0
                     };
                     if (JSON.stringify(state) !== JSON.stringify(self.lastSpeedState)) {
                         self.lastSpeedState = state;
