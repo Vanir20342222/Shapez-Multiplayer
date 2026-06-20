@@ -1,7 +1,7 @@
 {
   "name": "shapez-multiplayer-launcher",
-  "version": "1.0.0",
-  "description": "Launcher and Server Manager for Shapez Multiplayer",
+  "version": "1.6.0",
+  "description": "Launcher and Relay Server for Shapez Multiplayer",
   "main": "main.js",
   "scripts": {
     "start": "electron .",

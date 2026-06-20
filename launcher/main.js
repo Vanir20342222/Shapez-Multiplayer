@@ -219,8 +219,19 @@ ipcMain.handle('start-server', async () => {
     });
 
     wss.on("connection", (ws) => {
+      ws._lastMessageTime = [];
       ws.on("message", (data) => {
         try {
+          const now = Date.now();
+          ws._lastMessageTime.push(now);
+          if (ws._lastMessageTime.length > 50) {
+              const first = ws._lastMessageTime.shift();
+              if (now - first < 1000) {
+                  logToUI(`Rate limit exceeded for a client. Disconnecting.`);
+                  ws.close();
+                  return;
+              }
+          }
           const message = JSON.parse(data);
           handleMessage(ws, message);
         } catch (e) {

@@ -5,6 +5,8 @@ const localVersionEl = document.getElementById('local-version');
 const modStatusEl = document.getElementById('mod-status');
 
 const btnServer = document.getElementById('btn-server');
+const serverText = document.getElementById('server-text');
+const serverLoader = document.getElementById('server-loader');
 const serverLogs = document.getElementById('server-logs');
 const connectionStatus = document.getElementById('connection-status');
 
@@ -135,17 +137,21 @@ function appendLog(text, isError = false) {
 btnServer.addEventListener('click', async () => {
   if (isServerRunning) {
       btnServer.disabled = true;
-      btnServer.textContent = 'Stopping...';
+      serverText.textContent = 'Stopping...';
+      serverLoader.style.display = 'block';
       try {
           await window.electronAPI.stopServer();
       } catch (err) {
           appendLog('Error stopping server: ' + err.message, true);
           btnServer.disabled = false;
-          btnServer.textContent = 'Stop Server';
+          serverText.textContent = 'Stop Server';
+      } finally {
+          serverLoader.style.display = 'none';
       }
   } else {
       btnServer.disabled = true;
-      btnServer.textContent = 'Starting...';
+      serverText.textContent = 'Starting...';
+      serverLoader.style.display = 'block';
       serverLogs.innerHTML = ''; // Clear logs on start
       isServerRunning = true; // Optimistically set to prevent double starts
 
@@ -159,10 +165,10 @@ btnServer.addEventListener('click', async () => {
               isServerRunning = false;
               appendLog(res.message, true);
               btnServer.disabled = false;
-              btnServer.textContent = 'Start Server';
+              serverText.textContent = 'Start Server';
           } else {
               btnServer.disabled = false;
-              btnServer.textContent = 'Stop Server';
+              serverText.textContent = 'Stop Server';
               btnServer.className = 'btn btn-danger';
               connectionStatus.textContent = 'Server Running';
               connectionStatus.classList.add('active');
@@ -171,7 +177,9 @@ btnServer.addEventListener('click', async () => {
           isServerRunning = false;
           appendLog('Error starting server: ' + err.message, true);
           btnServer.disabled = false;
-          btnServer.textContent = 'Start Server';
+          serverText.textContent = 'Start Server';
+      } finally {
+          serverLoader.style.display = 'none';
       }
   }
 });
@@ -187,7 +195,7 @@ window.electronAPI.onServerError((data) => {
 window.electronAPI.onServerStopped((code) => {
     isServerRunning = false;
     btnServer.disabled = false;
-    btnServer.textContent = 'Start Server';
+    serverText.textContent = 'Start Server';
     btnServer.className = 'btn btn-primary';
     connectionStatus.textContent = 'Server Offline';
     connectionStatus.classList.remove('active');

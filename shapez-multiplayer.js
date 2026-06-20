@@ -1,8 +1,8 @@
 const METADATA = {
   id: "multiplayer",
   name: "Multiplayer Mod",
-  version: "1.5.6",
-  description: "A host-authority multiplayer mod for Shapez.io. Connect via the external launcher.",
+  version: "1.6.0",
+  description: "Adds full multiplayer support with host-authority delta-sync.",
   author: "Vanir",
   website: "https://shapez.io",
   minimumGameVersion: ">=1.5.0",
@@ -112,6 +112,13 @@ class Mod extends shapez.Mod {
 
     // 1. Inject Multiplayer Button in Main Menu
     this.modInterface.extendClass(shapez.MainMenuState, ({ $super, $old }) => ({
+      onEnter() {
+        if ($old.onEnter) $old.onEnter.apply(this, arguments);
+        if (self.network && typeof self.network.disconnect === "function") {
+          self.network.disconnect();
+        }
+        self.cleanupUI();
+      },
       renderMainMenu() {
         $old.renderMainMenu.apply(this, arguments);
         const mainContainer = this.htmlElement.querySelector(".mainContainer");
@@ -187,6 +194,7 @@ class Mod extends shapez.Mod {
             if (self.pendingSpeedCommands && self.pendingSpeedCommands.length > 0) {
                 var cmd = self.pendingSpeedCommands[0];
                 if (this.root.time.tickCount >= cmd.hostTick) {
+                    var missedTicks = this.root.time.tickCount - cmd.hostTick;
                     self.lastReceivedSpeedState = cmd;
                     var speedInput = document.getElementById("speed");
                     var pauseImg = document.getElementById("pause-image");
@@ -204,6 +212,12 @@ class Mod extends shapez.Mod {
                         }
                     }
                     self.pendingSpeedCommands.shift();
+                    
+                    if (missedTicks > 0 && !cmd.paused) {
+                        for (var i = 0; i < missedTicks && i < 100; i++) {
+                            $old.updateLogic.apply(this, arguments);
+                        }
+                    }
                 }
             }
         }
@@ -849,16 +863,16 @@ class Mod extends shapez.Mod {
                   var delBtn = document.createElement("button");
                   delBtn.textContent = "\u00D7";
                   delBtn.style.cssText = "background:none; border:none; color:#e53935; font-size:18px; font-weight:bold; cursor:pointer; padding:0 5px;";
-                  (function(idx) {
+                  (function(serverId) {
                     delBtn.onclick = function(e) {
                       e.stopPropagation();
                       var freshRaw = window.localStorage.getItem('mp_saved_servers');
                       var fresh = freshRaw ? JSON.parse(freshRaw) : [];
-                      fresh.splice(idx, 1);
+                      fresh = fresh.filter(function(server) { return server.uuid !== serverId; });
                       window.localStorage.setItem('mp_saved_servers', JSON.stringify(fresh));
                       renderSaved();
                     };
-                  })(s);
+                  })(entry.uuid);
             
                   btnWrap.appendChild(joinBtn);
                   btnWrap.appendChild(delBtn);
@@ -998,7 +1012,7 @@ class Mod extends shapez.Mod {
                   }
                 }
                 if (!exists) {
-                  saved.push({ ip: ip, port: port, code: code, pass: pass });
+                  saved.push({ ip: ip, port: port, code: code, pass: pass, uuid: Math.random().toString(36).substring(2) });
                   window.localStorage.setItem('mp_saved_servers', JSON.stringify(saved));
                 }
               } catch(e) { console.error(e); }
@@ -1475,6 +1489,7 @@ class Mod extends shapez.Mod {
                   root.hud.parts.pinnedShapes.deserialize(state.pinnedShapes);
                   root.hud.parts.pinnedShapes.rerenderFull();
               }
+          }
           if (state.belts && root.systemMgr.systems.belt) {
               var paths = root.systemMgr.systems.belt.beltPaths;
               for (var i = 0; i < paths.length; i++) {
@@ -1535,6 +1550,20 @@ class Mod extends shapez.Mod {
 
         // M13: Clear any existing speed sync interval
         if (self._speedSyncInterval) clearInterval(self._speedSyncInterval);
+
+        if (shapez.GameActionLogic && !shapez.GameActionLogic.prototype.performAction.__mp_hooked) {
+            var origPerformAction = shapez.GameActionLogic.prototype.performAction;
+            shapez.GameActionLogic.prototype.performAction = function (action) {
+                if (!self.actions.isRemote && !self.network.isSpectator) {
+                    if (action && (action.type === "undo" || action.type === "redo")) {
+                        self.network.actionQueue.push(action);
+                    }
+                }
+                return origPerformAction.apply(this, arguments);
+            };
+            shapez.GameActionLogic.prototype.performAction.__mp_hooked = true;
+        }
+
         if (!shapez.Blueprint.prototype.tryPlace.__mp_hooked) {
             var origBlueprintPlace = shapez.Blueprint.prototype.tryPlace;
             shapez.Blueprint.prototype.tryPlace = function (blueprintRoot, tile) {
@@ -1903,7 +1932,9 @@ class CursorOverlay extends shapez.BaseHUDPart {
       if (now - data.time > 5000) { toDelete.push(id); return; }
       
       var screenPos = null;
-      if (this.root.camera && this.root.camera.worldToScreen) {
+      if (typeof shapez !== "undefined" && shapez.GLOBAL_APP && shapez.GLOBAL_APP.camera) {
+          screenPos = shapez.GLOBAL_APP.camera.worldToScreen({ x: data.x, y: data.y });
+      } else if (this.root.camera && this.root.camera.worldToScreen) {
           screenPos = this.root.camera.worldToScreen(new shapez.Vector(data.x, data.y));
       }
       
@@ -1919,17 +1950,18 @@ class CursorOverlay extends shapez.BaseHUDPart {
           }
       }
 
-      var cachedWindowSize = (this.root.app && this.root.app.cachedWindowSize) || {};
-      var w = cachedWindowSize.width || window.innerWidth || 1920;
-      var h = cachedWindowSize.height || window.innerHeight || 1080;
+      var w = window.innerWidth;
+      var h = window.innerHeight;
       
       var isOffscreen = !screenPos || isNaN(screenPos.x) || isNaN(screenPos.y) || screenPos.x < 0 || screenPos.x > w || screenPos.y < 0 || screenPos.y > h;
 
       if (isOffscreen) {
-          var cx = w / 2;
-          var cy = h / 2;
-          var dx = (screenPos && !isNaN(screenPos.x) ? screenPos.x : 0) - cx;
-          var dy = (screenPos && !isNaN(screenPos.y) ? screenPos.y : 0) - cy;
+          var padding = 25;
+          var finalX = Math.max(padding, Math.min(w - padding, screenPos && !isNaN(screenPos.x) ? screenPos.x : w / 2));
+          var finalY = Math.max(padding, Math.min(h - padding, screenPos && !isNaN(screenPos.y) ? screenPos.y : h / 2));
+          
+          var dx = (screenPos && !isNaN(screenPos.x) ? screenPos.x : w / 2) - finalX;
+          var dy = (screenPos && !isNaN(screenPos.y) ? screenPos.y : h / 2) - finalY;
           
           if (dx === 0 && dy === 0) {
               dx = 1;
@@ -1937,24 +1969,6 @@ class CursorOverlay extends shapez.BaseHUDPart {
           }
 
           var angle = Math.atan2(dy, dx);
-          
-          var padding = 25;
-          var halfW = Math.max(1, (w / 2) - padding);
-          var halfH = Math.max(1, (h / 2) - padding);
-          
-          var tanTheta = Math.tan(angle);
-          var intersectX, intersectY;
-          
-          if (Math.abs(tanTheta) < halfH / halfW) {
-             intersectX = dx > 0 ? halfW : -halfW;
-             intersectY = intersectX * tanTheta;
-          } else {
-             intersectY = dy > 0 ? halfH : -halfH;
-             intersectX = intersectY / tanTheta;
-          }
-          
-          var finalX = cx + intersectX;
-          var finalY = cy + intersectY;
           
           context.save();
           context.translate(finalX, finalY);

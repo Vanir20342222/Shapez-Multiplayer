@@ -22,6 +22,8 @@ Share a single factory map with friends, build cooperative infrastructure, and d
 
 ## Project Structure
 
+The standalone server.js is DEPRECATED. The relay server is now inside launcher/main.js
+
 | Path | Description |
 |---|---|
 | `launcher/` | Electron Launcher app — installs the mod and runs the embedded relay server |
@@ -88,6 +90,12 @@ If router configuration is unavailable, utilize a tunneling service:
 2. Enter the host's Public IP, VPN IP, or Tunnel URL.
 3. Enter port `3005` (or the specific port provided by your tunnel service).
 4. Input the Room Code and click **Join**.
+
+---
+
+## WebSocket Protocol
+
+Messages follow `{ type: string, payload: any, from?: string }`.
 
 ---
 
