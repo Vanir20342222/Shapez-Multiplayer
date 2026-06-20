@@ -1,7 +1,7 @@
 const METADATA = {
   id: "multiplayer",
   name: "Multiplayer Mod",
-  version: "1.5.4",
+  version: "1.5.5",
   description: "A host-authority multiplayer mod for Shapez.io. Connect via the external launcher.",
   author: "Vanir",
   website: "https://shapez.io",
@@ -430,14 +430,15 @@ class Mod extends shapez.Mod {
                 if (h2) h2.textContent = "Loading Map...";
                 if (p) p.textContent = "Processing save data";
             }
+            var guestId = "mp_guest_" + Date.now();
             var metaData = {
                 lastUpdate: Date.now(),
                 version: shapez.Savegame.getCurrentVersion(),
-                internalId: "mp_guest_temp",
+                internalId: guestId,
                 name: "Multiplayer Guest"
             };
             var joinSave = new shapez.Savegame(shapez.GLOBAL_APP, {
-                internalId: "mp_guest_temp",
+                internalId: guestId,
                 metaDataRef: metaData,
             });
             joinSave.isSaveable = function() { return false; };
