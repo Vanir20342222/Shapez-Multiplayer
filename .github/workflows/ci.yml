@@ -1,4 +1,4 @@
-name: Devbox CI and release builds
+name: CI and release builds
 on:
   push:
     branches: [main]
@@ -8,11 +8,11 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: devbox-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref_type != 'tag' }}
 jobs:
   build:
-    runs-on: ${{ fromJSON((github.event_name == 'pull_request' || github.event_name == 'pull_request_target' || github.event_name == 'merge_group') && '["ubuntu-24.04"]' || '["self-hosted","Linux","X64","devbox"]') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
